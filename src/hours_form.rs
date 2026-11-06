@@ -7,6 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Clear, Paragraph, Wrap};
 use serde_json::{Value, json};
 
+use crate::i18n::{tr, trf};
 use crate::inputs;
 use crate::models::{Task, sanitize};
 use crate::theme;
@@ -196,16 +197,16 @@ impl HoursForm {
     /// y ni la fecha ni la hora de inicio son futuras.
     pub fn body(&self) -> Result<Value, String> {
         let date = inputs::mask_parse(&self.values[DATE])
-            .ok_or_else(|| "Fecha inválida: usá DD-MM-AA (ej: 05-11-26).".to_string())?;
+            .ok_or_else(|| tr("Invalid date: use DD-MM-YY (e.g. 05-11-26).").to_string())?;
         if date > self.now.date() {
-            return Err("La fecha no puede ser futura.".into());
+            return Err(tr("The date cannot be in the future.").into());
         }
         let start = if self.has_time {
             let time = inputs::time_parse(&self.values[TIME])
-                .ok_or_else(|| "Hora de inicio inválida: usá HH:MM (ej: 10:30).".to_string())?;
+                .ok_or_else(|| tr("Invalid start time: use HH:MM (e.g. 10:30).").to_string())?;
             let start = date.and_time(time);
             if start > self.now {
-                return Err("La hora de inicio no puede ser futura.".into());
+                return Err(tr("The start time cannot be in the future.").into());
             }
             Some(start)
         } else {
@@ -215,17 +216,18 @@ impl HoursForm {
             .trim()
             .replace(',', ".")
             .parse()
-            .map_err(|_| "Horas inválidas: ej. 1.5".to_string())?;
+            .map_err(|_| tr("Invalid hours: e.g. 1.5").to_string())?;
         if !hours.is_finite() || hours <= 0.0 || hours > 24.0 {
-            return Err("Las horas tienen que ser mayores a 0 y hasta 24.".into());
+            return Err(tr("Hours must be greater than 0 and at most 24.").into());
         }
         let description = self.values[DESCRIPTION].trim();
         if description.is_empty() {
-            return Err("Escribí una descripción.".into());
+            return Err(tr("Write a description.").into());
         }
         if description.chars().count() > MAX_DESCRIPTION {
-            return Err(format!(
-                "La descripción admite hasta {MAX_DESCRIPTION} caracteres."
+            return Err(trf(
+                "The description accepts up to {max} characters.",
+                &[("max", &MAX_DESCRIPTION.to_string())],
             ));
         }
         let mut body = json!({
@@ -237,10 +239,9 @@ impl HoursForm {
         });
         if let Some(start) = start {
             // hora local con su offset: `routes` la guarda en UTC
-            let local = Local
-                .from_local_datetime(&start)
-                .single()
-                .ok_or_else(|| "La hora de inicio es ambigua por cambio de horario.".to_string())?;
+            let local = Local.from_local_datetime(&start).single().ok_or_else(|| {
+                tr("The start time is ambiguous because of a daylight-saving change.").to_string()
+            })?;
             body["date_time"] = json!(local.to_rfc3339_opts(SecondsFormat::Secs, false));
         }
         Ok(body)
@@ -275,15 +276,15 @@ impl HoursForm {
         .areas(area);
 
         frame.render_widget(
-            Paragraph::new(inputs::top_bar("Cargar horas ·", &self.title)),
+            Paragraph::new(inputs::top_bar(tr("Log hours ·"), &self.title)),
             top,
         );
 
         // Fecha · Hora de inicio · Horas, una al lado de la otra
         let fields: Vec<(usize, &str, &str)> = [
-            (DATE, "Fecha", "DD-MM-AA, hasta hoy"),
-            (TIME, "Hora de inicio", "HH:MM"),
-            (HOURS, "Horas", "0 a 24, ej: 1.5"),
+            (DATE, "Date", "DD-MM-YY, up to today"),
+            (TIME, "Start time", "HH:MM"),
+            (HOURS, "Hours", "0 to 24, e.g. 1.5"),
         ]
         .into_iter()
         .filter(|(i, _, _)| self.has_time || *i != TIME)
@@ -301,7 +302,7 @@ impl HoursForm {
             let focused = self.focus == *i;
             frame.render_widget(
                 Paragraph::new(Line::styled(
-                    format!(" {label}"),
+                    format!(" {}", tr(label)),
                     if focused {
                         theme::heading()
                     } else {
@@ -323,7 +324,7 @@ impl HoursForm {
                 Style::new().add_modifier(Modifier::BOLD),
             );
             frame.render_widget(
-                Paragraph::new(Span::styled(format!(" ({hint})"), theme::dim())),
+                Paragraph::new(Span::styled(format!(" ({})", tr(hint)), theme::dim())),
                 hint_cells[n],
             );
         }
@@ -331,7 +332,7 @@ impl HoursForm {
         inputs::draw_text_box(
             frame,
             description,
-            "Descripción",
+            tr("Description"),
             &self.values[DESCRIPTION],
             self.cursors[DESCRIPTION],
             self.focus == DESCRIPTION,
@@ -350,7 +351,7 @@ impl HoursForm {
         frame.render_widget(
             Paragraph::new(Line::from(vec![
                 Span::styled(if on_finish { "▸ " } else { "  " }, finish_style),
-                Span::styled("Finalizar tarea? ", finish_style),
+                Span::styled(format!("{} ", tr("Finish task?")), finish_style),
                 Span::styled(
                     mark,
                     if self.finish {
@@ -361,13 +362,16 @@ impl HoursForm {
                         finish_style
                     },
                 ),
-                Span::styled("  Espacio marca: pasa a Hecha", theme::dim()),
+                Span::styled(
+                    format!("  {}", tr("Space toggles: moves it to Done")),
+                    theme::dim(),
+                ),
             ])),
             finish,
         );
 
         let line = if self.sending {
-            Line::styled(format!(" {spinner} Enviando…"), theme::heading())
+            Line::styled(format!(" {spinner} {}", tr("Sending…")), theme::heading())
         } else if let Some(error) = &self.error {
             Line::styled(
                 format!(" {}", sanitize(error)),
@@ -375,7 +379,10 @@ impl HoursForm {
             )
         } else if !self.has_time {
             Line::styled(
-                " Este Odoo no guarda hora de inicio (no tiene el campo date_time).",
+                format!(
+                    " {}",
+                    tr("This Odoo does not store a start time (it has no date_time field).")
+                ),
                 theme::dim(),
             )
         } else {
@@ -383,8 +390,11 @@ impl HoursForm {
         };
         frame.render_widget(Paragraph::new(line).wrap(Wrap { trim: true }), status);
         frame.render_widget(
-            Paragraph::new(" Tab campo · Enter seguir/enviar · Ctrl+S enviar · Esc cancelar")
-                .style(theme::dim()),
+            Paragraph::new(format!(
+                " {}",
+                tr("Tab field · Enter next/send · Ctrl+S send · Esc cancel")
+            ))
+            .style(theme::dim()),
             hints,
         );
     }
@@ -497,8 +507,8 @@ mod tests {
         f.focus = HOURS;
         f.handle_key(key(KeyCode::BackTab));
         assert_eq!(f.focus, DATE);
-        assert!(screen(&f, 100, 24).contains("no guarda hora de inicio"));
-        assert!(!screen(&f, 100, 24).contains("Hora de inicio"));
+        assert!(screen(&f, 100, 24).contains("does not store a start time"));
+        assert!(!screen(&f, 100, 24).contains("Start time"));
     }
 
     #[test]
@@ -544,7 +554,7 @@ mod tests {
         type_text(&mut f, "1130"); // hoy, pero 11:30 > 11:15
         assert_eq!(
             f.body().unwrap_err(),
-            "La hora de inicio no puede ser futura."
+            "The start time cannot be in the future."
         );
         clear(&mut f, TIME);
         type_text(&mut f, "1115");
@@ -575,7 +585,7 @@ mod tests {
         // ya está completa: no entran más dígitos
         type_text(&mut f, "9");
         assert_eq!(f.values[DATE], "30-10-25");
-        assert_eq!(f.body().unwrap_err(), "Horas inválidas: ej. 1.5");
+        assert_eq!(f.body().unwrap_err(), "Invalid hours: e.g. 1.5");
     }
 
     #[test]
@@ -606,11 +616,11 @@ mod tests {
     fn a_stale_date_value_is_still_refused_when_sending() {
         let mut f = filled("2", "ok");
         f.values[DATE] = "06-11-26".into();
-        assert_eq!(f.body().unwrap_err(), "La fecha no puede ser futura.");
+        assert_eq!(f.body().unwrap_err(), "The date cannot be in the future.");
         f.values[DATE] = "31-02-26".into();
-        assert!(f.body().unwrap_err().contains("Fecha inválida"));
+        assert!(f.body().unwrap_err().contains("Invalid date"));
         f.values[DATE] = "05-11-".into();
-        assert!(f.body().unwrap_err().contains("DD-MM-AA"));
+        assert!(f.body().unwrap_err().contains("DD-MM-YY"));
     }
 
     #[test]
@@ -705,10 +715,10 @@ mod tests {
                     unifiqué los paneles de disponibilidad y revisé los umbrales";
         f.handle_paste(text);
         let shown = screen(&f, 80, 24);
-        assert!(shown.contains("Cargar horas") && shown.contains("#11 Migrar"));
-        assert!(shown.contains("Fecha") && shown.contains("05-11-26"));
-        assert!(shown.contains("Hora de inicio") && shown.contains("11:15"));
-        assert!(shown.contains("Horas") && shown.contains("HH:MM"));
+        assert!(shown.contains("Log hours") && shown.contains("#11 Migrar"));
+        assert!(shown.contains("Date") && shown.contains("05-11-26"));
+        assert!(shown.contains("Start time") && shown.contains("11:15"));
+        assert!(shown.contains("Hours") && shown.contains("HH:MM"));
         assert!(shown.contains("umbrales"), "{shown}");
         assert!(shown.contains("/256"));
         screen(&f, 20, 8);
@@ -757,12 +767,12 @@ mod tests {
     fn the_checkbox_is_drawn_with_its_state_and_meaning() {
         let mut f = form();
         let shown = screen(&f, 100, 24);
-        assert!(shown.contains("Finalizar tarea?") && shown.contains("[ ]"));
-        assert!(shown.contains("pasa a Hecha"));
+        assert!(shown.contains("Finish task?") && shown.contains("[ ]"));
+        assert!(shown.contains("moves it to Done"));
         f.finish = true;
         assert!(screen(&f, 100, 24).contains("[x]"));
         // en una terminal de 80 × 24 entra todo
         let shown = screen(&f, 80, 24);
-        assert!(shown.contains("Finalizar tarea?") && shown.contains("Esc cancelar"));
+        assert!(shown.contains("Finish task?") && shown.contains("Esc cancel"));
     }
 }

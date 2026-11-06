@@ -6,6 +6,7 @@ use ratatui::text::Line;
 use ratatui::widgets::{Clear, Paragraph, Wrap};
 
 use crate::config::Config;
+use crate::i18n::tr;
 use crate::inputs;
 use crate::models::sanitize;
 use crate::theme;
@@ -52,10 +53,10 @@ impl Wizard {
         };
         Self {
             fields: [
-                field("URL de Odoo", "https://odoo.example.com", false),
-                field("Base de datos", "odoo-db", false),
-                field("Usuario de Odoo", "nombre@example.com", false),
-                field("API key de Odoo", "APIKEY", true),
+                field("Odoo URL", "https://odoo.example.com", false),
+                field("Database", "odoo-db", false),
+                field("Odoo user", "name@example.com", false),
+                field("Odoo API key", "APIKEY", true),
             ],
             focus: URL,
             error: None,
@@ -144,13 +145,14 @@ impl Wizard {
         let cells = Layout::vertical(rows).split(area);
 
         frame.render_widget(
-            Paragraph::new(inputs::top_bar("primer arranque", "")),
+            Paragraph::new(inputs::top_bar(tr("first start"), "")),
             cells[0],
         );
         frame.render_widget(
-            Paragraph::new(
-                " Cargá los datos de acceso. Se validan contra Odoo antes de guardarlos.",
-            )
+            Paragraph::new(format!(
+                " {}",
+                tr("Enter your access details. They are checked against Odoo before being saved.")
+            ))
             .style(theme::dim()),
             cells[1],
         );
@@ -167,7 +169,7 @@ impl Wizard {
             frame.render_widget(
                 Paragraph::new(Line::from(vec![
                     marker,
-                    ratatui::text::Span::styled(field.label, label_style),
+                    ratatui::text::Span::styled(tr(field.label), label_style),
                 ])),
                 cell,
             );
@@ -180,7 +182,7 @@ impl Wizard {
                 field.cursor,
                 focused && !self.validating,
                 field.masked,
-                field.hint,
+                tr(field.hint),
                 if focused {
                     Style::new().add_modifier(Modifier::BOLD)
                 } else {
@@ -191,7 +193,7 @@ impl Wizard {
 
         let status = if self.validating {
             Line::styled(
-                format!(" {spinner} Validando contra Odoo…"),
+                format!(" {spinner} {}", tr("Checking against Odoo…")),
                 theme::heading(),
             )
         } else if let Some(error) = &self.error {
@@ -207,8 +209,11 @@ impl Wizard {
             cells[2 + self.fields.len() + 1],
         );
         frame.render_widget(
-            Paragraph::new(" Tab/↑↓ campo · Enter seguir/confirmar · Esc salir")
-                .style(theme::dim()),
+            Paragraph::new(format!(
+                " {}",
+                tr("Tab/↑↓ field · Enter next/confirm · Esc quit")
+            ))
+            .style(theme::dim()),
             cells[cells.len() - 1],
         );
     }
@@ -217,6 +222,7 @@ impl Wizard {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::i18n::{Lang, tr_in};
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::crossterm::event::KeyEventKind;
@@ -349,7 +355,7 @@ mod tests {
         let mut w = filled();
         w.focus = URL;
         let text = screen(&w, 100, 40);
-        assert!(text.contains("https://odoo.example.com") && text.contains("Base de datos"));
+        assert!(text.contains("https://odoo.example.com") && text.contains("Database"));
         assert!(!text.contains("odoo-key"));
         assert!(text.contains("••••••••"));
     }
@@ -357,10 +363,23 @@ mod tests {
     #[test]
     fn fits_a_24_row_terminal_with_the_error_visible() {
         let mut w = filled();
-        w.set_error("Usuario, clave o base de datos de Odoo inválidos.".into());
+        w.set_error("Invalid Odoo user, key or database.".into());
         let text = screen(&w, 80, 24);
-        assert!(text.contains("API key de Odoo") && text.contains("base de datos de Odoo inv"));
-        assert!(text.contains("Esc salir"));
+        assert!(text.contains("Odoo API key") && text.contains("Invalid Odoo user"));
+        assert!(text.contains("Esc quit"));
         screen(&w, 10, 4);
+    }
+
+    #[test]
+    fn labels_fit_their_column_in_every_language() {
+        for field in &Wizard::new().fields {
+            for lang in Lang::ALL {
+                let label = tr_in(lang, field.label);
+                assert!(
+                    Line::from(label).width() < LABEL_WIDTH as usize,
+                    "{lang:?}: {label}"
+                );
+            }
+        }
     }
 }

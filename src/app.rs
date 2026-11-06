@@ -8,6 +8,7 @@ use crate::api::{ApiError, Client};
 use crate::config::Config;
 use crate::create_form::{Cat, CatKey, Catalogs, CreateForm, Event as CreateEvent, PATH};
 use crate::hours_form::{HoursForm, Outcome as FormOutcome};
+use crate::i18n::{tr, trf};
 use crate::models::{Named, Paged, Row, Task, Timesheet, User};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -90,10 +91,13 @@ fn describe(request: &Request, error: &ApiError) -> String {
     ) || matches!(error, ApiError::Server(code, _) if *code >= 500);
     if request.body.is_some() && maybe_applied {
         let panel = match request.source {
-            Source::CreateTask | Source::EditTask | Source::CloseTask => "Tareas",
-            _ => "Horas",
+            Source::CreateTask | Source::EditTask | Source::CloseTask => tr("Tasks"),
+            _ => tr("Hours"),
         };
-        format!("{error} Puede que se haya guardado: revisá el panel {panel} antes de reintentar.")
+        trf(
+            "{error} It may have been saved: check the {panel} panel before retrying.",
+            &[("error", &error.to_string()), ("panel", panel)],
+        )
     } else {
         error.to_string()
     }
@@ -256,6 +260,8 @@ pub struct Confirm {
 pub struct Step {
     pub requests: Vec<Request>,
     pub quit: bool,
+    /// Pidió pasar al idioma siguiente (lo aplica y lo guarda `main`).
+    pub cycle_lang: bool,
 }
 
 pub struct App {
@@ -341,6 +347,10 @@ impl App {
             Panel::Tasks => &mut self.tasks,
             Panel::Hours => &mut self.hours,
         }
+    }
+
+    pub fn set_notice(&mut self, message: String) {
+        self.notice = Some(message);
     }
 
     pub fn detail(&self) -> String {
@@ -442,14 +452,14 @@ impl App {
             Source::Projects => {
                 let result = result.and_then(|p| match p {
                     Payload::Projects(rows) => Ok(rows),
-                    _ => Err("respuesta inesperada".to_string()),
+                    _ => Err(tr("unexpected response").to_string()),
                 });
                 let result = result.map(|mut rows| {
                     rows.insert(
                         0,
                         Named {
                             id: 0,
-                            name: "Todos".into(),
+                            name: tr("All").into(),
                         },
                     );
                     rows
@@ -464,14 +474,14 @@ impl App {
             Source::Tasks => {
                 let result = result.and_then(|p| match p {
                     Payload::Tasks(rows) => Ok(rows),
-                    _ => Err("respuesta inesperada".to_string()),
+                    _ => Err(tr("unexpected response").to_string()),
                 });
                 self.tasks.finish(seq, result);
             }
             Source::Hours => {
                 let result = result.and_then(|p| match p {
                     Payload::Hours(rows) => Ok(rows),
-                    _ => Err("respuesta inesperada".to_string()),
+                    _ => Err(tr("unexpected response").to_string()),
                 });
                 self.finish_hours(seq, result);
             }
@@ -495,7 +505,7 @@ impl App {
     fn catalog_rows(result: Result<Payload, String>) -> Result<Vec<Named>, String> {
         result.and_then(|p| match p {
             Payload::Catalog(rows) => Ok(rows),
-            _ => Err("respuesta inesperada".to_string()),
+            _ => Err(tr("unexpected response").to_string()),
         })
     }
 
@@ -506,15 +516,15 @@ impl App {
         match result {
             Ok(Payload::Saved(record)) => {
                 let what = if form.edit_id.is_some() {
-                    "Tarea actualizada"
+                    tr("Task updated")
                 } else {
-                    "Tarea creada"
+                    tr("Task created")
                 };
                 self.notice = Some(format!("{what} #{}: {}", record.id, record.name));
                 self.create = None;
                 return self.refresh_after_write();
             }
-            Ok(_) => form.error = Some("Respuesta inesperada de Odoo.".into()),
+            Ok(_) => form.error = Some(tr("Unexpected response from Odoo.").into()),
             Err(message) => form.error = Some(message),
         }
         form.sending = false;
@@ -527,9 +537,12 @@ impl App {
         };
         match result {
             Ok(Payload::Created(line)) => {
-                self.notice = Some(format!(
-                    "Cargadas {:.1}h en {}",
-                    line.unit_amount, form.title
+                self.notice = Some(trf(
+                    "Logged {hours}h on {task}",
+                    &[
+                        ("hours", &format!("{:.1}", line.unit_amount)),
+                        ("task", &form.title),
+                    ],
                 ));
                 let (finish, task_id, label) = (form.finish, form.task_id, form.title.clone());
                 self.form = None;
@@ -556,7 +569,7 @@ impl App {
                 // las horas cargadas cambian también los totales de la tarea
                 return self.data_requests(true);
             }
-            Ok(_) => form.error = Some("Respuesta inesperada de Odoo.".into()),
+            Ok(_) => form.error = Some(tr("Unexpected response from Odoo.").into()),
             Err(message) => form.error = Some(message),
         }
         form.sending = false;
@@ -584,8 +597,7 @@ impl App {
                     .collect();
                 if mine.is_empty() && total > 0 {
                     self.notice = Some(
-                        "Horas: ningún empleado se llama como tu usuario; probá 'm' para ver todas."
-                            .into(),
+                        tr("Hours: no employee has your user's name; press 'm' to see all.").into(),
                     );
                 }
                 mine
@@ -605,12 +617,15 @@ impl App {
                 self.mine = self.me.is_some();
                 if self.me.is_none() {
                     self.notice =
-                        Some("No pude leer tu usuario: se muestran todos los registros.".into());
+                        Some(tr("Could not read your user: showing every record.").into());
                 }
             }
             Ok(_) => {}
             Err(message) => {
-                self.notice = Some(format!("No pude ubicar tu usuario: {message}"));
+                self.notice = Some(trf(
+                    "Could not locate your user: {message}",
+                    &[("message", &message)],
+                ));
             }
         }
     }
@@ -683,6 +698,7 @@ impl App {
                 step.requests.push(self.projects_request());
             }
             KeyCode::Char('/') => self.filtering = true,
+            KeyCode::Char('l') => step.cycle_lang = true,
             KeyCode::Esc => {
                 self.panel_mut().filter_mut().clear();
                 self.panel_mut().select(0);
@@ -701,7 +717,7 @@ impl App {
         match HoursForm::new(task, now(), has_time) {
             Some(form) => self.form = Some(form),
             None => {
-                self.notice = Some("La tarea no tiene proyecto: no se pueden cargar horas.".into());
+                self.notice = Some(tr("The task has no project: hours cannot be logged.").into());
             }
         }
     }
@@ -864,7 +880,7 @@ impl App {
 
     fn toggle_mine(&mut self) -> Vec<Request> {
         if self.me.is_none() {
-            self.notice = Some("No ubiqué tu usuario: 'mías' no está disponible.".into());
+            self.notice = Some(tr("Your user was not found: 'mine' is not available.").into());
             return vec![];
         }
         self.mine = !self.mine;
@@ -934,17 +950,23 @@ impl App {
         };
         match result {
             Ok(Payload::Saved(record)) => {
-                self.notice = Some(format!("Tarea completada #{}: {}", record.id, record.name));
+                self.notice = Some(format!(
+                    "{} #{}: {}",
+                    tr("Task completed"),
+                    record.id,
+                    record.name
+                ));
                 self.confirm = None;
                 // sale de la lista de abiertas: la carga baja
                 return self.refresh_after_write();
             }
-            Ok(_) => confirm.error = Some("Respuesta inesperada de Odoo.".into()),
+            Ok(_) => confirm.error = Some(tr("Unexpected response from Odoo.").into()),
             Err(message) => {
                 let after_hours = confirm.after_hours;
                 confirm.error = Some(if after_hours {
-                    format!(
-                        "Las horas ya quedaron cargadas, pero no se pudo finalizar la tarea: {message}"
+                    trf(
+                        "The hours were already logged, but the task could not be finished: {message}",
+                        &[("message", &message)],
                     )
                 } else {
                     message
@@ -1281,6 +1303,16 @@ mod tests {
     }
 
     #[test]
+    fn l_asks_to_change_the_language_except_while_typing() {
+        let (mut app, _) = ready();
+        assert!(press(&mut app, 'l').cycle_lang);
+        // en el filtro la «l» es texto
+        press(&mut app, '/');
+        assert!(!press(&mut app, 'l').cycle_lang);
+        assert_eq!(app.tasks.filter, "l");
+    }
+
+    #[test]
     fn week_start_is_a_monday() {
         use chrono::{Datelike, NaiveDate};
         let day = NaiveDate::parse_from_str(&week_start_today(), "%Y-%m-%d").unwrap();
@@ -1422,15 +1454,15 @@ mod tests {
             query: vec![],
             body: Some(json!({})),
         };
-        assert!(describe(&request, &ApiError::Timeout(15)).contains("revisá el panel Horas"));
-        assert!(describe(&request, &ApiError::Server(502, "x".into())).contains("revisá"));
-        assert!(!describe(&request, &ApiError::Server(400, "x".into())).contains("revisá"));
-        assert!(!describe(&request, &ApiError::Forbidden("x".into())).contains("revisá"));
+        assert!(describe(&request, &ApiError::Timeout(15)).contains("check the Hours panel"));
+        assert!(describe(&request, &ApiError::Server(502, "x".into())).contains("check the"));
+        assert!(!describe(&request, &ApiError::Server(400, "x".into())).contains("check the"));
+        assert!(!describe(&request, &ApiError::Forbidden("x".into())).contains("check the"));
         let get = Request {
             body: None,
             ..request
         };
-        assert!(!describe(&get, &ApiError::Timeout(15)).contains("revisá"));
+        assert!(!describe(&get, &ApiError::Timeout(15)).contains("check the"));
     }
 
     /// `with_task` + proyecto "Alfa" aplicado, para que el alta de tarea sea válida.
@@ -1468,7 +1500,7 @@ mod tests {
         press(&mut app, 'j');
         app.on_key(key(KeyCode::Enter)); // aplica "Alfa" y enfoca Tareas
         press(&mut app, 'n');
-        assert_eq!(app.create.as_ref().unwrap().title(), "Nueva tarea");
+        assert_eq!(app.create.as_ref().unwrap().title(), "New task");
         type_in(&mut app, "Nueva cosa");
         let step = app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
         let request = &step.requests[0];
@@ -1508,7 +1540,7 @@ mod tests {
         let seq = step.requests[0].seq;
         let refresh = app.on_response(saved(Source::CreateTask, seq, 321, "X"));
         assert!(app.create.is_none());
-        assert!(app.notice.as_deref().unwrap().contains("Tarea creada #321"));
+        assert!(app.notice.as_deref().unwrap().contains("Task created #321"));
         assert_eq!(refresh.len(), 3);
     }
 
@@ -1583,9 +1615,9 @@ mod tests {
             body: Some(json!({})),
         };
         let err = ApiError::Timeout(15);
-        assert!(describe(&request(Source::CreateTask), &err).contains("panel Tareas"));
-        assert!(describe(&request(Source::EditTask), &err).contains("panel Tareas"));
-        assert!(describe(&request(Source::CreateHours), &err).contains("panel Horas"));
+        assert!(describe(&request(Source::CreateTask), &err).contains("Tasks panel"));
+        assert!(describe(&request(Source::EditTask), &err).contains("Tasks panel"));
+        assert!(describe(&request(Source::CreateHours), &err).contains("Hours panel"));
     }
 
     /// App con estas tareas cargadas (enfocada en Tareas) y mías activo.
@@ -1655,12 +1687,7 @@ mod tests {
         assert_eq!(request.body.as_ref().unwrap(), &json!({"priority": "0"}));
         let refresh = app.on_response(saved(Source::EditTask, request.seq, 11, "Primera"));
         assert!(app.create.is_none());
-        assert!(
-            app.notice
-                .as_deref()
-                .unwrap()
-                .contains("Tarea actualizada #11")
-        );
+        assert!(app.notice.as_deref().unwrap().contains("Task updated #11"));
         assert_eq!(refresh.len(), 3);
     }
 
@@ -1777,7 +1804,7 @@ mod tests {
             app.notice
                 .as_deref()
                 .unwrap()
-                .contains("Tarea completada #11")
+                .contains("Task completed #11")
         );
         let sources: Vec<_> = refresh.iter().map(|r| r.source).collect();
         assert_eq!(sources, [Source::Tasks, Source::Hours, Source::Projects]);
@@ -1836,7 +1863,7 @@ mod tests {
             query: vec![],
             body: Some(json!({"state": "1_done"})),
         };
-        assert!(describe(&request, &ApiError::Timeout(15)).contains("panel Tareas"));
+        assert!(describe(&request, &ApiError::Timeout(15)).contains("Tasks panel"));
     }
 
     #[test]
@@ -1904,7 +1931,7 @@ mod tests {
         assert!(app.form.is_none());
         let confirm = app.confirm.as_ref().unwrap();
         assert!(confirm.sending && confirm.after_hours);
-        assert!(app.notice.as_deref().unwrap().contains("Cargadas 2.0h"));
+        assert!(app.notice.as_deref().unwrap().contains("Logged 2.0h"));
     }
 
     #[test]
@@ -1918,7 +1945,7 @@ mod tests {
             app.notice
                 .as_deref()
                 .unwrap()
-                .contains("Tarea completada #11")
+                .contains("Task completed #11")
         );
         let sources: Vec<_> = refresh.iter().map(|r| r.source).collect();
         assert_eq!(sources, [Source::Tasks, Source::Hours, Source::Projects]);
@@ -1939,7 +1966,7 @@ mod tests {
         let confirm = app.confirm.as_ref().unwrap();
         let error = confirm.error.as_deref().unwrap();
         assert!(!confirm.sending);
-        assert!(error.contains("horas ya quedaron cargadas") && error.contains("estado"));
+        assert!(error.contains("hours were already logged") && error.contains("estado"));
         // Enter reintenta solo el cierre (no vuelve a cargar horas)
         let retry = app.on_key(key(KeyCode::Enter));
         assert_eq!(retry.requests.len(), 1);

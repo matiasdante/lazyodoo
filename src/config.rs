@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::i18n::{Lang, tr, trf};
+
 /// Destino (Odoo) y credenciales. Los secretos no aparecen en `Debug`.
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct Config {
@@ -32,17 +34,17 @@ impl Config {
         let base_url = normalize_url(base_url)?;
         let database = database.trim().to_string();
         if database.is_empty() || database.len() > 63 {
-            return Err("Completá la base de datos de Odoo (hasta 63 caracteres).".into());
+            return Err(tr("Enter the Odoo database (up to 63 characters).").into());
         }
         if !database
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.'))
         {
-            return Err("La base de datos admite letras, números, _ - y .".into());
+            return Err(tr("The database accepts letters, numbers, _ - and .").into());
         }
         let login = login.trim().to_string();
         if login.is_empty() || secret.is_empty() {
-            return Err("Completá el usuario y la clave de Odoo.".into());
+            return Err(tr("Enter the Odoo user and key.").into());
         }
         Ok(Self {
             base_url,
@@ -57,13 +59,13 @@ fn normalize_url(raw: &str) -> Result<String, String> {
     let raw = raw.trim().trim_end_matches('/');
     let (scheme, rest) = raw
         .split_once("://")
-        .ok_or("La URL tiene que empezar con https://")?;
+        .ok_or(tr("The URL must start with https://"))?;
     if rest.is_empty() || rest.contains(['@', '?', '#', ' ']) {
-        return Err("URL inválida: sin credenciales, query ni espacios.".into());
+        return Err(tr("Invalid URL: no credentials, query or spaces.").into());
     }
     if rest.contains('/') {
         return Err(
-            "La URL es solo el origen de Odoo (sin ruta), ej: https://odoo.example.com".into(),
+            tr("The URL is just the Odoo origin (no path), e.g. https://odoo.example.com").into(),
         );
     }
     let host = rest;
@@ -73,13 +75,13 @@ fn normalize_url(raw: &str) -> Result<String, String> {
         host.split(':').next().unwrap_or("")
     };
     if host_only.is_empty() {
-        return Err("La URL no tiene host.".into());
+        return Err(tr("The URL has no host.").into());
     }
     let local = matches!(host_only, "localhost" | "127.0.0.1" | "::1");
     match scheme {
         "https" => {}
         "http" if local => {}
-        _ => return Err("Se exige https (http solo para localhost).".into()),
+        _ => return Err(tr("https is required (http only for localhost).").into()),
     }
     Ok(raw.to_string())
 }
@@ -93,7 +95,7 @@ pub fn load(path: &Path) -> Result<Option<Config>, String> {
     let text = match fs::read_to_string(path) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(format!("No pude leer {}: {e}", path.display())),
+        Err(e) => return Err(io_error("Could not read {path}: {e}", path, &e)),
     };
     #[cfg(unix)]
     {
@@ -103,32 +105,68 @@ pub fn load(path: &Path) -> Result<Option<Config>, String> {
             .permissions()
             .mode();
         if mode & 0o077 != 0 {
-            return Err(format!(
-                "{} tiene permisos {:o}: otros usuarios podrían leer los secretos. \
-                 Ejecutá: chmod 600 {}",
-                path.display(),
-                mode & 0o777,
-                path.display()
+            return Err(trf(
+                "{path} has permissions {mode}: other users could read the secrets. Run: chmod 600 {path}",
+                &[
+                    ("path", &path.display().to_string()),
+                    ("mode", &format!("{:o}", mode & 0o777)),
+                ],
             ));
         }
     }
     toml::from_str(&text).map(Some).map_err(|e| {
-        format!(
-            "Config inválida en {}: {e}. Borrá el archivo y volvé a cargar los datos.",
-            path.display()
+        trf(
+            "Invalid config in {path}: {e}. Delete the file and enter the details again.",
+            &[("path", &path.display().to_string()), ("e", &e.to_string())],
         )
     })
 }
 
 /// Guarda con permisos 0600 (archivo) y 0700 (carpeta), de forma atómica.
 pub fn save(path: &Path, config: &Config) -> Result<(), String> {
-    let dir = path.parent().ok_or("Ruta de config inválida.")?;
+    let dir = path.parent().ok_or(tr("Invalid config path."))?;
     let text = toml::to_string(config).map_err(|e| e.to_string())?;
     create_private_dir(dir)?;
     let tmp = path.with_extension("toml.tmp");
     write_private(&tmp, text.as_bytes())
         .and_then(|()| fs::rename(&tmp, path))
-        .map_err(|e| format!("No pude guardar {}: {e}", path.display()))
+        .map_err(|e| io_error("Could not save {path}: {e}", path, &e))
+}
+
+/// Preferencias que no son secretas (hoy, solo el idioma), junto a la config.
+#[derive(Serialize, Deserialize, Default)]
+struct Settings {
+    lang: Option<Lang>,
+}
+
+fn settings_path(config_path: &Path) -> PathBuf {
+    config_path.with_file_name("settings.toml")
+}
+
+/// El idioma elegido, o `None` si todavía no se eligió (o el archivo no se entiende:
+/// en ese caso simplemente se vuelve a preguntar).
+pub fn load_lang(config_path: &Path) -> Option<Lang> {
+    let text = fs::read_to_string(settings_path(config_path)).ok()?;
+    toml::from_str::<Settings>(&text).ok()?.lang
+}
+
+pub fn save_lang(config_path: &Path, lang: Lang) -> Result<(), String> {
+    let path = settings_path(config_path);
+    let dir = path.parent().ok_or(tr("Invalid config path."))?;
+    let text = toml::to_string(&Settings { lang: Some(lang) }).map_err(|e| e.to_string())?;
+    create_private_dir(dir)?;
+    let tmp = path.with_extension("toml.tmp");
+    write_private(&tmp, text.as_bytes())
+        .and_then(|()| fs::rename(&tmp, &path))
+        .map_err(|e| io_error("Could not save {path}: {e}", &path, &e))
+}
+
+/// Mensaje traducido con la ruta y el error del sistema.
+fn io_error(en: &'static str, path: &Path, e: &std::io::Error) -> String {
+    trf(
+        en,
+        &[("path", &path.display().to_string()), ("e", &e.to_string())],
+    )
 }
 
 fn create_private_dir(dir: &Path) -> Result<(), String> {
@@ -139,11 +177,11 @@ fn create_private_dir(dir: &Path) -> Result<(), String> {
             .recursive(true)
             .mode(0o700)
             .create(dir)
-            .map_err(|e| format!("No pude crear {}: {e}", dir.display()))
+            .map_err(|e| io_error("Could not create {path}: {e}", dir, &e))
     }
     #[cfg(not(unix))]
     {
-        fs::create_dir_all(dir).map_err(|e| format!("No pude crear {}: {e}", dir.display()))
+        fs::create_dir_all(dir).map_err(|e| io_error("Could not create {path}: {e}", dir, &e))
     }
 }
 
@@ -242,7 +280,7 @@ mod tests {
         }
         let err = load(&path).unwrap_err();
         assert!(
-            err.contains("database") && err.contains("Borrá el archivo"),
+            err.contains("database") && err.contains("Delete the file"),
             "{err}"
         );
     }
@@ -281,5 +319,26 @@ mod tests {
     fn load_missing_is_first_run() {
         let tmp = tempfile::tempdir().unwrap();
         assert_eq!(load(&tmp.path().join("nope.toml")).unwrap(), None);
+    }
+
+    #[test]
+    fn the_language_is_saved_next_to_the_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("lazyodoo").join("config.toml");
+        assert_eq!(load_lang(&path), None);
+        save_lang(&path, Lang::Zh).unwrap();
+        assert_eq!(load_lang(&path), Some(Lang::Zh));
+        save_lang(&path, Lang::Pt).unwrap();
+        assert_eq!(load_lang(&path), Some(Lang::Pt));
+        // no pisa ni lee la config con secretos
+        assert_eq!(load(&path), Ok(None));
+    }
+
+    #[test]
+    fn a_broken_settings_file_just_asks_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(dir.path().join("settings.toml"), "lang = \"klingon\"").unwrap();
+        assert_eq!(load_lang(&path), None);
     }
 }

@@ -15,6 +15,7 @@ use serde_json::{Value, json};
 
 use crate::api::ApiError;
 use crate::config::Config;
+use crate::i18n::{tr, trf};
 use crate::models::sanitize;
 
 #[derive(Clone)]
@@ -96,7 +97,7 @@ impl Session {
             code => {
                 return Err(ApiError::Server(
                     code,
-                    "respuesta HTTP inesperada de Odoo".into(),
+                    tr("unexpected HTTP response from Odoo").into(),
                 ));
             }
         }
@@ -109,14 +110,16 @@ impl Session {
             return Err(ApiError::NotApi);
         }
         if data.get("id").and_then(Value::as_u64) != Some(id) {
-            return Err(ApiError::BadResponse("respuesta JSON-RPC inválida".into()));
+            return Err(ApiError::BadResponse(
+                tr("invalid JSON-RPC response").into(),
+            ));
         }
         if let Some(error) = data.get("error") {
             return Err(odoo_error(error));
         }
         data.get("result")
             .cloned()
-            .ok_or_else(|| ApiError::BadResponse("respuesta JSON-RPC incompleta".into()))
+            .ok_or_else(|| ApiError::BadResponse(tr("incomplete JSON-RPC response").into()))
     }
 
     /// `uid` autenticado, pidiéndolo a Odoo la primera vez.
@@ -164,9 +167,9 @@ impl Session {
         match share {
             Some(false) => Ok(uid),
             Some(true) => Err(ApiError::Forbidden(
-                "Solo los usuarios internos pueden usar lazyodoo.".into(),
+                tr("Only internal users can use lazyodoo.").into(),
             )),
-            None => Err(ApiError::Forbidden("No se pudo leer tu usuario.".into())),
+            None => Err(ApiError::Forbidden(tr("Could not read your user.").into())),
         }
     }
 
@@ -246,7 +249,7 @@ fn odoo_error(error: &Value) -> ApiError {
     match name {
         "odoo.exceptions.AccessDenied" => ApiError::Unauthorized,
         "odoo.exceptions.AccessError" => ApiError::Forbidden(if message.is_empty() {
-            "No tenés permiso para esa operación.".into()
+            tr("You do not have permission for that operation.").into()
         } else {
             message
         }),
@@ -256,9 +259,12 @@ fn odoo_error(error: &Value) -> ApiError {
         }
         _ => ApiError::Server(
             502,
-            format!("Odoo no pudo completar la operación. {message}")
-                .trim_end()
-                .to_string(),
+            trf(
+                "Odoo could not complete the operation. {message}",
+                &[("message", &message)],
+            )
+            .trim_end()
+            .to_string(),
         ),
     }
 }
@@ -336,7 +342,7 @@ mod tests {
         });
         let err = session(&fake.url).validate().unwrap_err();
         assert!(
-            matches!(&err, ApiError::Forbidden(m) if m.contains("internos")),
+            matches!(&err, ApiError::Forbidden(m) if m.contains("internal users")),
             "{err:?}"
         );
     }
@@ -374,7 +380,7 @@ mod tests {
                 "FATAL: database \"x\" does not exist",
                 ApiError::Server(
                     502,
-                    "Odoo no pudo completar la operación. FATAL: database \"x\" does not exist"
+                    "Odoo could not complete the operation. FATAL: database \"x\" does not exist"
                         .into(),
                 ),
             ),
@@ -430,11 +436,11 @@ mod tests {
         for (body, expected) in [
             (
                 r#"{"jsonrpc":"2.0","id":999,"result":1}"#,
-                ApiError::BadResponse("respuesta JSON-RPC inválida".into()),
+                ApiError::BadResponse(tr("invalid JSON-RPC response").into()),
             ),
             (
                 r#"{"jsonrpc":"2.0","id":1}"#,
-                ApiError::BadResponse("respuesta JSON-RPC incompleta".into()),
+                ApiError::BadResponse(tr("incomplete JSON-RPC response").into()),
             ),
             (r#"{"otra":"cosa"}"#, ApiError::NotApi),
         ] {
