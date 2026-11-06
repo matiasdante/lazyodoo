@@ -500,7 +500,15 @@ mod tests {
         let err = session(&format!("http://127.0.0.1:{port}"))
             .validate()
             .unwrap_err();
-        assert!(matches!(err, ApiError::Network(_)), "{err:?}");
+        // Windows no rechaza al instante un puerto cerrado: reintenta hasta vencer el timeout.
+        if cfg!(windows) {
+            assert!(
+                matches!(err, ApiError::Network(_) | ApiError::Timeout(_)),
+                "{err:?}"
+            );
+        } else {
+            assert!(matches!(err, ApiError::Network(_)), "{err:?}");
+        }
 
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
