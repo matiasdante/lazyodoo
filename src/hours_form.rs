@@ -284,7 +284,7 @@ impl HoursForm {
         let fields: Vec<(usize, &str, &str)> = [
             (DATE, "Date", "DD-MM-YY, up to today"),
             (TIME, "Start time", "HH:MM"),
-            (HOURS, "Hours", "0 to 24, e.g. 1.5"),
+            (HOURS, "Hours", "0-24, e.g. 1.5"),
         ]
         .into_iter()
         .filter(|(i, _, _)| self.has_time || *i != TIME)
@@ -774,5 +774,24 @@ mod tests {
         // en una terminal de 80 × 24 entra todo
         let shown = screen(&f, 80, 24);
         assert!(shown.contains("Finish task?") && shown.contains("Esc cancel"));
+    }
+
+    #[test]
+    fn field_hints_fit_their_column_in_every_language() {
+        use crate::i18n::{Lang, tr_in};
+        // columnas de 24 (fecha) y 18 (resto) menos « (» y «)»
+        for (hint, max) in [
+            ("DD-MM-YY, up to today", 21),
+            ("HH:MM", 15),
+            ("0-24, e.g. 1.5", 15),
+        ] {
+            for lang in Lang::ALL {
+                let text = tr_in(lang, hint);
+                assert!(
+                    ratatui::text::Line::from(text).width() <= max,
+                    "{lang:?}: {text}"
+                );
+            }
+        }
     }
 }

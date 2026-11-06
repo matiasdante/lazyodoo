@@ -645,10 +645,10 @@ const STRINGS: &[(&str, &str, &str, &str)] = &[
     ),
     ("HH:MM", "HH:MM", "HH:MM", "HH:MM"),
     (
-        "0 to 24, e.g. 1.5",
+        "0-24, e.g. 1.5",
         "0 a 24, ej: 1.5",
-        "0 a 24, ex.: 1.5",
-        "0 到 24，例如 1.5",
+        "0 a 24, ex. 1.5",
+        "0-24，如 1.5",
     ),
 ];
 
@@ -758,7 +758,7 @@ mod tests {
             "Task",
             "DD-MM-YY, up to today",
             "HH:MM",
-            "0 to 24, e.g. 1.5",
+            "0-24, e.g. 1.5",
             "Hours",
             "No changes to save.",
         ];

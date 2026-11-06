@@ -41,7 +41,13 @@ pub fn render(frame: &mut Frame, app: &App, spinner: char) {
         .iter()
         .map(|p| {
             let mark = if p.id == applied { "● " } else { "  " };
-            format!("{mark}{}", p.label())
+            // «Todos» es una fila que arma la app: se traduce al dibujar, no al cargar
+            let label = if p.id == 0 {
+                tr("All").into()
+            } else {
+                p.label()
+            };
+            format!("{mark}{label}")
         })
         .collect();
     let hours_total: f64 = app.hours.items.iter().map(|h| h.unit_amount).sum();
@@ -438,7 +444,7 @@ mod tests {
         ));
         let screen = draw(&app, 120, 40);
         assert!(screen.contains("Log hours · #5 Hacer "));
-        assert!(screen.contains("0 to 24"));
+        assert!(screen.contains("0-24"));
         draw(&app, 20, 6);
     }
 
