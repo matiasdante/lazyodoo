@@ -1,6 +1,6 @@
 [package]
 name = "lazyodoo"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2024"
 description = "TUI para gestionar tareas y horas de Odoo por JSON-RPC"
 

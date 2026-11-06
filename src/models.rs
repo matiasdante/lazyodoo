@@ -1,4 +1,7 @@
+use ratatui::text::Line;
 use serde::Deserialize;
+
+use crate::i18n::{Lang, current, tr, tr_in, trf};
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Named {
@@ -145,6 +148,27 @@ pub fn html_to_text(html: &str) -> String {
     sanitize(result.trim())
 }
 
+/// «Etiqueta: valor» por línea, con los valores alineados según el ancho en pantalla
+/// de las etiquetas traducidas (el chino ocupa dos columnas por carácter).
+fn table(rows: &[(&'static str, String)]) -> String {
+    table_in(current(), rows)
+}
+
+fn table_in(lang: Lang, rows: &[(&'static str, String)]) -> String {
+    let labels: Vec<String> = rows
+        .iter()
+        .map(|(l, _)| format!("{}:", tr_in(lang, l)))
+        .collect();
+    let width = |text: &str| Line::from(text).width();
+    let longest = labels.iter().map(|l| width(l)).max().unwrap_or(0);
+    labels
+        .iter()
+        .zip(rows)
+        .map(|(label, (_, value))| format!("{label}{} {value}", " ".repeat(longest - width(label))))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn name(record: &Option<Named>) -> &str {
     record.as_ref().map_or("-", |r| r.name.as_str())
 }
@@ -164,9 +188,9 @@ fn names(records: &[Named]) -> String {
 fn body(html: &str, has_image: bool) -> String {
     let text = html_to_text(html);
     match (text.is_empty(), has_image) {
-        (true, false) => "(sin descripción)".into(),
-        (true, true) => "(solo imagen)".into(),
-        (false, true) => format!("{text}\n(la descripción tiene imágenes)"),
+        (true, false) => tr("(no description)").into(),
+        (true, true) => tr("(image only)").into(),
+        (false, true) => format!("{text}\n{}", tr("(the description has images)")),
         (false, false) => text,
     }
 }
@@ -191,21 +215,31 @@ impl Row for Task {
         sanitize(&format!("#{} {}", self.id, self.name))
     }
     fn detail(&self) -> String {
+        let hours = trf(
+            "{allocated} allocated · {logged} logged · {remaining} remaining",
+            &[
+                ("allocated", &format!("{:.1}", self.allocated_hours)),
+                ("logged", &format!("{:.1}", self.effective_hours)),
+                ("remaining", &format!("{:.1}", self.remaining_hours)),
+            ],
+        );
+        let rows = table(&[
+            ("Project", name(&self.project).to_string()),
+            ("Stage", name(&self.stage).to_string()),
+            ("Assignees", names(&self.users)),
+            ("Customer", name(&self.partner).to_string()),
+            ("Tags", names(&self.tags)),
+            (
+                "Deadline",
+                self.date_deadline.as_deref().unwrap_or("-").to_string(),
+            ),
+            ("Priority", self.priority.to_string()),
+            ("Hours", hours),
+        ]);
         sanitize(&format!(
-            "#{} {}\n\nProyecto:  {}\nEstado:    {}\nAsignados: {}\nCliente:   {}\nTags:      {}\n\
-             Deadline:  {}\nPrioridad: {}\nHoras:     {:.1} asignadas · {:.1} cargadas · {:.1} restantes\n\n{}",
+            "#{} {}\n\n{rows}\n\n{}",
             self.id,
             self.name,
-            name(&self.project),
-            name(&self.stage),
-            names(&self.users),
-            name(&self.partner),
-            names(&self.tags),
-            self.date_deadline.as_deref().unwrap_or("-"),
-            self.priority,
-            self.allocated_hours,
-            self.effective_hours,
-            self.remaining_hours,
             body(&self.description, self.description_has_image),
         ))
     }
@@ -229,17 +263,19 @@ impl Row for Timesheet {
         ))
     }
     fn detail(&self) -> String {
+        let rows = table(&[
+            (
+                "Start",
+                local_start(self.date_time.as_deref())
+                    .map_or("-".to_string(), |t| t.format("%d-%m-%y %H:%M").to_string()),
+            ),
+            ("Employee", name(&self.employee).to_string()),
+            ("Project", name(&self.project).to_string()),
+            ("Task", name(&self.task).to_string()),
+        ]);
         sanitize(&format!(
-            "#{} · {} · {:.2} h\n\nInicio:   {}\nEmpleado: {}\nProyecto: {}\nTarea:    {}\n\n{}",
-            self.id,
-            self.date,
-            self.unit_amount,
-            local_start(self.date_time.as_deref())
-                .map_or("-".to_string(), |t| t.format("%d-%m-%y %H:%M").to_string()),
-            name(&self.employee),
-            name(&self.project),
-            name(&self.task),
-            self.name,
+            "#{} · {} · {:.2} h\n\n{rows}\n\n{}",
+            self.id, self.date, self.unit_amount, self.name,
         ))
     }
 }
@@ -276,8 +312,8 @@ mod tests {
         }))
         .unwrap();
         let detail = task.detail();
-        assert!(detail.contains("Proyecto:  Proy") && detail.contains("Asignados: Yo"));
-        assert!(detail.contains("Detalle") && detail.contains("imágenes"));
+        assert!(detail.contains("Project:   Proy") && detail.contains("Assignees: Yo"));
+        assert!(detail.contains("Detalle") && detail.contains("images"));
         assert_eq!(task.label(), "#7 Migrar");
     }
 
@@ -306,11 +342,36 @@ mod tests {
             label.contains(" 6.0h P") && label.matches(':').count() == 1,
             "{label}"
         );
-        assert!(line.detail().contains("Inicio:"));
+        assert!(line.detail().contains("Start:"));
         let without: Timesheet = serde_json::from_value(serde_json::json!({
             "id": 1, "date": "2026-11-05", "project": null, "task": null, "employee": null
         }))
         .unwrap();
-        assert!(without.detail().contains("Inicio:   -"));
+        assert!(without.detail().contains("Start:    -"));
+    }
+
+    #[test]
+    fn detail_values_line_up_in_every_language() {
+        let rows = [
+            ("Project", "p".to_string()),
+            ("Assignees", "a".to_string()),
+            ("Hours", "h".to_string()),
+        ];
+        for lang in Lang::ALL {
+            let text = table_in(lang, &rows);
+            let columns: Vec<usize> = text
+                .lines()
+                .map(|line| {
+                    let (label, value) = line.split_once(':').unwrap();
+                    Line::from(format!("{label}:{}", &value[..value.len() - 1])).width()
+                })
+                .collect();
+            assert!(columns.windows(2).all(|w| w[0] == w[1]), "{lang:?}: {text}");
+            for line in text.lines() {
+                let label = line.split_once(':').unwrap().0;
+                // styled_detail solo reconoce etiquetas cortas y de puras letras
+                assert!(label.chars().count() <= 14 && label.chars().all(char::is_alphabetic));
+            }
+        }
     }
 }

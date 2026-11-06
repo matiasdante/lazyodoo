@@ -7,6 +7,7 @@ use std::time::Duration;
 use serde_json::Value;
 
 use crate::config::Config;
+use crate::i18n::{tr, trf};
 use crate::odoo::Session;
 use crate::routes;
 
@@ -30,19 +31,41 @@ pub enum ApiError {
 impl fmt::Display for ApiError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Unauthorized => write!(f, "Usuario, clave o base de datos de Odoo inválidos."),
-            Self::Forbidden(detail) => write!(f, "Acceso denegado: {detail}"),
+            Self::Unauthorized => f.write_str(tr("Invalid Odoo user, key or database.")),
+            Self::Forbidden(detail) => {
+                write!(
+                    f,
+                    "{}",
+                    trf("Access denied: {detail}", &[("detail", detail)])
+                )
+            }
             Self::Timeout(secs) => write!(
                 f,
-                "No hubo respuesta en {secs}s. Revisá la URL y tu conexión."
+                "{}",
+                trf(
+                    "No response in {secs}s. Check the URL and your connection.",
+                    &[("secs", &secs.to_string())]
+                )
             ),
-            Self::Network(msg) => write!(f, "No se pudo conectar: {msg}"),
-            Self::NotApi => write!(
+            Self::Network(msg) => {
+                write!(f, "{}", trf("Could not connect: {msg}", &[("msg", msg)]))
+            }
+            Self::NotApi => f.write_str(tr(
+                "The URL answered, but it does not look like Odoo. Check the domain.",
+            )),
+            Self::Server(code, detail) => write!(
                 f,
-                "La URL respondió, pero no parece ser Odoo. Revisá el dominio."
+                "{}",
+                trf(
+                    "Odoo answered {code}: {detail}",
+                    &[("code", &code.to_string()), ("detail", detail)]
+                )
             ),
-            Self::Server(code, detail) => write!(f, "Odoo respondió {code}: {detail}"),
-            Self::BadResponse(msg) => write!(f, "Respuesta inesperada de Odoo: {msg}"),
+            Self::BadResponse(msg) => write!(
+                f,
+                "{}",
+                trf("Unexpected response from Odoo: {msg}", &[("msg", msg)])
+            ),
         }
     }
 }
@@ -129,7 +152,7 @@ mod tests {
 
     #[test]
     fn error_messages_name_the_problem() {
-        assert!(ApiError::Unauthorized.to_string().contains("base de datos"));
+        assert!(ApiError::Unauthorized.to_string().contains("database"));
         assert!(ApiError::NotApi.to_string().contains("Odoo"));
         assert!(ApiError::Timeout(5).to_string().contains("5s"));
     }

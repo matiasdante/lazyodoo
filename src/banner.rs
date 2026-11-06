@@ -7,6 +7,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
+use crate::i18n::tr;
 use crate::theme;
 
 const L: [&str; 6] = [
@@ -106,7 +107,7 @@ pub fn render(frame: &mut Frame) {
     let mut text = lines(area.width);
     text.push(Line::raw(""));
     text.push(Line::styled(
-        "Tareas y horas de Odoo, desde la terminal",
+        tr("Odoo tasks and hours, from the terminal"),
         theme::dim(),
     ));
     text.push(Line::styled(
@@ -114,7 +115,10 @@ pub fn render(frame: &mut Frame) {
         Style::new().fg(theme::primary()),
     ));
     text.push(Line::raw(""));
-    text.push(Line::styled("Enter para continuar", theme::heading()));
+    text.push(Line::styled(
+        tr("Press any key to continue"),
+        theme::heading(),
+    ));
     let height = text.len() as u16;
     let [_, middle, _] = Layout::vertical([
         Constraint::Fill(1),
@@ -153,7 +157,7 @@ mod tests {
     #[test]
     fn wide_terminals_get_the_big_banner_and_narrow_ones_plain_text() {
         let wide = screen(100, 20);
-        assert!(wide.contains("██╗") && wide.contains("Enter para continuar"));
+        assert!(wide.contains("██╗") && wide.contains("Press any key to continue"));
         let narrow = screen(40, 12);
         assert!(narrow.contains("LAZYODOO") && !narrow.contains("██╗"));
         screen(5, 2);

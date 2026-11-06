@@ -4,7 +4,9 @@ mod banner;
 mod config;
 mod create_form;
 mod hours_form;
+mod i18n;
 mod inputs;
+mod lang_select;
 mod models;
 mod odoo;
 mod routes;
@@ -12,6 +14,7 @@ mod routes;
 mod testutil;
 mod theme;
 mod ui;
+mod ui_strings;
 mod wizard;
 
 use std::io;
@@ -28,6 +31,8 @@ use ratatui::crossterm::execute;
 
 use app::{App, Response};
 use config::Config;
+use i18n::Lang;
+use lang_select::LangSelect;
 use wizard::{Outcome, Wizard};
 
 /// Cuánto se ve el banner si no se toca ninguna tecla.
@@ -39,6 +44,11 @@ enum Screen {
     /// Banner de inicio; mientras tanto la pantalla siguiente ya está cargando.
     Splash {
         since: Instant,
+        next: Box<Screen>,
+    },
+    /// Primer arranque: elegir idioma antes de seguir con la pantalla `next`.
+    Lang {
+        select: LangSelect,
         next: Box<Screen>,
     },
     Wizard(Box<Wizard>),
@@ -89,9 +99,11 @@ fn main() {
         return;
     }
     let Some(path) = config::default_path() else {
-        eprintln!("No encontré el directorio de configuración del sistema.");
+        eprintln!("Could not find the system configuration directory.");
         std::process::exit(1);
     };
+    let saved_lang = config::load_lang(&path);
+    i18n::set(saved_lang.unwrap_or_default());
     let screen = match config::load(&path) {
         Ok(Some(config)) => match Home::new(&config) {
             Ok(home) => Screen::Home(Box::new(home)),
@@ -105,6 +117,14 @@ fn main() {
             eprintln!("{message}");
             std::process::exit(1);
         }
+    };
+    let screen = if saved_lang.is_none() {
+        Screen::Lang {
+            select: LangSelect::new(),
+            next: Box::new(screen),
+        }
+    } else {
+        screen
     };
     let screen = Screen::Splash {
         since: Instant::now(),
@@ -128,6 +148,7 @@ fn run(terminal: &mut DefaultTerminal, mut screen: Screen, path: &Path) -> io::R
         let spinner = SPINNER[tick % SPINNER.len()];
         terminal.draw(|frame| match &screen {
             Screen::Splash { .. } => banner::render(frame),
+            Screen::Lang { select, .. } => select.render(frame),
             Screen::Wizard(wizard) => wizard.render(frame, spinner),
             Screen::Home(home) => ui::render(frame, &home.app, spinner),
         })?;
@@ -151,7 +172,10 @@ fn run(terminal: &mut DefaultTerminal, mut screen: Screen, path: &Path) -> io::R
                 Err(TryRecvError::Empty) => {}
                 Err(TryRecvError::Disconnected) => {
                     validation = None;
-                    set_wizard_error(&mut screen, "La validación terminó mal.".into());
+                    set_wizard_error(
+                        &mut screen,
+                        i18n::tr("The check ended unexpectedly.").into(),
+                    );
                 }
             }
         }
@@ -178,6 +202,19 @@ fn run(terminal: &mut DefaultTerminal, mut screen: Screen, path: &Path) -> io::R
                 }
                 screen = skip_splash(screen);
             }
+            (Event::Key(key), Screen::Lang { select, .. }) if key.kind == KeyEventKind::Press => {
+                match select.handle_key(key) {
+                    lang_select::Outcome::Quit => return Ok(()),
+                    lang_select::Outcome::Chosen(lang) => {
+                        let message = choose_lang(path, lang);
+                        screen = skip_lang(screen);
+                        if let Some(message) = message {
+                            notify(&mut screen, message);
+                        }
+                    }
+                    lang_select::Outcome::None => {}
+                }
+            }
             (Event::Key(key), Screen::Wizard(wizard)) if key.kind == KeyEventKind::Press => {
                 match wizard.handle_key(key) {
                     Outcome::Quit => return Ok(()),
@@ -192,6 +229,12 @@ fn run(terminal: &mut DefaultTerminal, mut screen: Screen, path: &Path) -> io::R
                     return Ok(());
                 }
                 home.dispatch(step.requests);
+                if step.cycle_lang {
+                    let lang = i18n::current().next();
+                    if let Some(message) = choose_lang(path, lang) {
+                        home.app.set_notice(message);
+                    }
+                }
             }
             (Event::Paste(text), Screen::Home(home)) => home.app.on_paste(&text),
             _ => {}
@@ -203,6 +246,28 @@ fn skip_splash(screen: Screen) -> Screen {
     match screen {
         Screen::Splash { next, .. } => *next,
         other => other,
+    }
+}
+
+fn skip_lang(screen: Screen) -> Screen {
+    match screen {
+        Screen::Lang { next, .. } => *next,
+        other => other,
+    }
+}
+
+/// Aplica el idioma y lo guarda. Si no se pudo guardar, devuelve el aviso (la sesión
+/// sigue en ese idioma igual).
+fn choose_lang(path: &Path, lang: Lang) -> Option<String> {
+    i18n::set(lang);
+    config::save_lang(path, lang).err()
+}
+
+fn notify(screen: &mut Screen, message: String) {
+    match screen {
+        Screen::Wizard(wizard) => wizard.set_error(message),
+        Screen::Home(home) => home.app.set_notice(message),
+        _ => {}
     }
 }
 

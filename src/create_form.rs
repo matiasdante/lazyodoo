@@ -11,6 +11,7 @@ use ratatui::widgets::{
 };
 use serde_json::{Map, Value, json};
 
+use crate::i18n::{tr, trf};
 use crate::inputs;
 use crate::models::{Named, Task, sanitize};
 use crate::theme;
@@ -42,8 +43,11 @@ pub type Catalogs = HashMap<CatKey, Vec<Named>>;
 
 type Options = &'static [(i64, &'static str)];
 
-const TASK_PRIORITY: Options = &[(0, "Normal"), (1, "Alta")];
-pub const NO_CHANGES: &str = "No hay cambios para guardar.";
+const TASK_PRIORITY: Options = &[(0, "Normal"), (1, "High")];
+pub const NO_CHANGES: &str = "No changes to save.";
+
+/// Columnas que ocupa la etiqueta (con el `*` de obligatorio) antes del valor.
+const LABEL_WIDTH: u16 = 18;
 
 /// Ruta de alta y modificación de tareas.
 pub const PATH: &str = "project-task";
@@ -137,12 +141,12 @@ impl CreateForm {
         let project = project.into_iter().collect();
         let me: Vec<Named> = me.into_iter().collect();
         let defs = vec![
-            def("name", "Nombre", Kind::Text { max: 256 }, true),
-            def("project_id", "Proyecto", Kind::Pick(Cat::Projects), true),
-            def("user_ids", "Asignados", Kind::PickMany(Cat::Users), false),
-            def("stage_id", "Estado", Kind::Pick(Cat::TaskStages), false),
+            def("name", "Name", Kind::Text { max: 256 }, true),
+            def("project_id", "Project", Kind::Pick(Cat::Projects), true),
+            def("user_ids", "Assignees", Kind::PickMany(Cat::Users), false),
+            def("stage_id", "Stage", Kind::Pick(Cat::TaskStages), false),
             def("date_deadline", "Deadline", Kind::Deadline, false),
-            def("allocated_hours", "Horas asignadas", Kind::Hours, false),
+            def("allocated_hours", "Allocated hours", Kind::Hours, false),
         ];
         let vals = vec![
             Val::Text(String::new()),
@@ -184,12 +188,12 @@ impl CreateForm {
 
     pub fn edit_task(task: &Task) -> Self {
         let defs = vec![
-            def("name", "Nombre", Kind::Text { max: 256 }, true),
-            def("user_ids", "Asignados", Kind::PickMany(Cat::Users), false),
-            def("stage_id", "Estado", Kind::Pick(Cat::TaskStages), false),
-            def("priority", "Prioridad", Kind::Choice(TASK_PRIORITY), false),
+            def("name", "Name", Kind::Text { max: 256 }, true),
+            def("user_ids", "Assignees", Kind::PickMany(Cat::Users), false),
+            def("stage_id", "Stage", Kind::Pick(Cat::TaskStages), false),
+            def("priority", "Priority", Kind::Choice(TASK_PRIORITY), false),
             def("date_deadline", "Deadline", Kind::Deadline, false),
-            def("allocated_hours", "Horas asignadas", Kind::Hours, false),
+            def("allocated_hours", "Allocated hours", Kind::Hours, false),
             def("tag_ids", "Tags", Kind::PickMany(Cat::TaskTags), false),
         ];
         let vals = vec![
@@ -228,8 +232,8 @@ impl CreateForm {
 
     pub fn title(&self) -> String {
         match self.edit_id {
-            Some(id) => format!("Editar tarea #{id}"),
-            None => "Nueva tarea".into(),
+            Some(id) => trf("Edit task #{id}", &[("id", &id.to_string())]),
+            None => tr("New task").into(),
         }
     }
 
@@ -370,7 +374,7 @@ impl CreateForm {
                 .iter()
                 .map(|(id, name)| Named {
                     id: *id,
-                    name: (*name).to_string(),
+                    name: tr(name).to_string(),
                 })
                 .collect();
         }
@@ -459,7 +463,7 @@ impl CreateForm {
                 self.sending = true;
                 Event::Submit(body)
             }
-            Err(message) if message == NO_CHANGES => Event::Cancel,
+            Err(message) if message == tr(NO_CHANGES) => Event::Cancel,
             // algo no valida: el formulario queda abierto para corregirlo
             Err(message) => {
                 self.error = Some(message);
@@ -495,7 +499,7 @@ impl CreateForm {
             }
         }
         if changes.is_empty() {
-            Err(NO_CHANGES.into())
+            Err(tr(NO_CHANGES).into())
         } else {
             Ok(Value::Object(changes))
         }
@@ -516,7 +520,6 @@ impl CreateForm {
 
         frame.render_widget(Paragraph::new(inputs::top_bar("", &self.title())), cells[0]);
 
-        const LABEL_WIDTH: u16 = 18;
         let editing = !self.sending && self.picker.is_none();
         for (i, (def, val)) in self.defs.iter().zip(&self.vals).enumerate() {
             let focused = i == self.focus;
@@ -531,7 +534,7 @@ impl CreateForm {
             frame.render_widget(
                 Paragraph::new(Line::from(vec![
                     Span::styled(marker, label_style),
-                    Span::styled(format!("{}{star}", def.label), label_style),
+                    Span::styled(format!("{}{star}", tr(def.label)), label_style),
                 ])),
                 cell,
             );
@@ -582,7 +585,7 @@ impl CreateForm {
             }
         }
         let status = if self.sending {
-            Line::styled(format!(" {spinner} Enviando…"), theme::heading())
+            Line::styled(format!(" {spinner} {}", tr("Sending…")), theme::heading())
         } else if let Some(error) = &self.error {
             Line::styled(
                 format!(" {}", sanitize(error)),
@@ -597,8 +600,11 @@ impl CreateForm {
             cells[last - 2],
         );
         frame.render_widget(
-            Paragraph::new(" Tab/↑↓ campo · Enter elegir/seguir · Ctrl+S enviar · Esc cancelar")
-                .style(theme::dim()),
+            Paragraph::new(format!(
+                " {}",
+                tr("Tab/↑↓ field · Enter pick/next · Ctrl+S send · Esc cancel")
+            ))
+            .style(theme::dim()),
             cells[last - 1],
         );
 
@@ -609,10 +615,10 @@ impl CreateForm {
 
     fn hint(&self, kind: Kind) -> &'static str {
         match kind {
-            Kind::Deadline => "DD-MM-AA (opcional)",
-            Kind::Hours => "ej: 4 (opcional)",
+            Kind::Deadline => tr("DD-MM-YY (optional)"),
+            Kind::Hours => tr("e.g. 4 (optional)"),
             Kind::Text { .. } => "",
-            Kind::Pick(_) | Kind::PickMany(_) | Kind::Choice(_) => "Enter para elegir",
+            Kind::Pick(_) | Kind::PickMany(_) | Kind::Choice(_) => tr("Enter to pick"),
         }
     }
 
@@ -626,12 +632,12 @@ impl CreateForm {
             Val::Text(_) => vec![],
         };
         let help = if picker.multi {
-            "Enter marca/desmarca · Esc listo"
+            tr("Enter toggles · Esc done")
         } else {
-            "Enter elige · Esc cierra"
+            tr("Enter picks · Esc closes")
         };
         let block = Block::default()
-            .title(format!(" {} ", self.defs[picker.field].label))
+            .title(format!(" {} ", tr(self.defs[picker.field].label)))
             .title_bottom(Line::styled(
                 format!(" {help} "),
                 Style::new().fg(theme::gray()),
@@ -658,13 +664,13 @@ impl CreateForm {
             );
         } else if picker.loading {
             frame.render_widget(
-                Paragraph::new(format!("{spinner} cargando…"))
+                Paragraph::new(format!("{spinner} {}", tr("loading…")))
                     .style(Style::new().fg(theme::gray())),
                 list_area,
             );
         } else if visible.is_empty() {
             frame.render_widget(
-                Paragraph::new("(sin resultados)").style(Style::new().fg(theme::gray())),
+                Paragraph::new(tr("(no results)")).style(Style::new().fg(theme::gray())),
                 list_area,
             );
         } else {
@@ -699,7 +705,8 @@ impl CreateForm {
 fn collect(defs: &[Def], vals: &[Val]) -> Result<Map<String, Value>, String> {
     let mut body = Map::new();
     for (def, val) in defs.iter().zip(vals) {
-        let missing = || format!("Completá «{}».", def.label);
+        let label = tr(def.label);
+        let missing = || trf("Fill in «{label}».", &[("label", label)]);
         match (def.kind, val) {
             (Kind::Text { max }, Val::Text(text)) => {
                 let text = text.trim();
@@ -710,7 +717,10 @@ fn collect(defs: &[Def], vals: &[Val]) -> Result<Map<String, Value>, String> {
                     continue;
                 }
                 if text.chars().count() > max {
-                    return Err(format!("«{}» admite hasta {max} caracteres.", def.label));
+                    return Err(trf(
+                        "«{label}» accepts up to {max} characters.",
+                        &[("label", label), ("max", &max.to_string())],
+                    ));
                 }
                 body.insert(def.key.into(), json!(text));
             }
@@ -728,9 +738,9 @@ fn collect(defs: &[Def], vals: &[Val]) -> Result<Map<String, Value>, String> {
                     .trim()
                     .replace(',', ".")
                     .parse()
-                    .map_err(|_| format!("«{}» tiene que ser un número.", def.label))?;
+                    .map_err(|_| trf("«{label}» must be a number.", &[("label", label)]))?;
                 if !hours.is_finite() || hours < 0.0 {
-                    return Err(format!("«{}» no puede ser negativo.", def.label));
+                    return Err(trf("«{label}» cannot be negative.", &[("label", label)]));
                 }
                 body.insert(def.key.into(), json!(hours));
             }
@@ -768,7 +778,7 @@ fn choice(options: Options, raw: &str) -> Vec<Named> {
         .and_then(|id| options.iter().find(|(i, _)| *i == id))
         .map(|(id, label)| Named {
             id: *id,
-            name: (*label).to_string(),
+            name: tr(label).to_string(),
         })
         .into_iter()
         .collect()
@@ -805,15 +815,15 @@ fn hours_text(hours: f64) -> String {
 /// Fin del día (23:59) en hora local, con offset, para que `routes` lo pase a UTC.
 fn end_of_day(text: &str) -> Result<String, String> {
     let date = inputs::mask_parse(text)
-        .ok_or_else(|| "Deadline inválido: usá DD-MM-AA (ej: 20-11-26).".to_string())?;
+        .ok_or_else(|| tr("Invalid deadline: use DD-MM-YY (e.g. 20-11-26).").to_string())?;
     let naive = date
         .and_hms_opt(23, 59, 0)
-        .ok_or_else(|| "Deadline inválido.".to_string())?;
+        .ok_or_else(|| tr("Invalid deadline.").to_string())?;
     Local
         .from_local_datetime(&naive)
         .single()
         .map(|d| d.to_rfc3339_opts(SecondsFormat::Secs, false))
-        .ok_or_else(|| "Deadline ambiguo por cambio de horario.".to_string())
+        .ok_or_else(|| tr("Ambiguous deadline because of a daylight-saving change.").to_string())
 }
 
 fn centered(area: Rect, width: u16, height: u16) -> Rect {
@@ -830,6 +840,7 @@ fn centered(area: Rect, width: u16, height: u16) -> Rect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::i18n::{Lang, tr_in};
     use ratatui::crossterm::event::KeyEventKind;
 
     fn named(id: i64, name: &str) -> Named {
@@ -879,9 +890,9 @@ mod tests {
     #[test]
     fn required_fields_are_enforced_before_any_request() {
         let mut form = CreateForm::new(None, None);
-        assert!(form.body().unwrap_err().contains("Nombre"));
+        assert!(form.body().unwrap_err().contains("Name"));
         type_text(&mut form, "x", &catalogs());
-        assert!(form.body().unwrap_err().contains("Proyecto"));
+        assert!(form.body().unwrap_err().contains("Project"));
     }
 
     #[test]
@@ -1075,12 +1086,12 @@ mod tests {
                 .collect::<String>()
         };
         let screen = draw(&form, 120, 40);
-        assert!(screen.contains("Nueva tarea") && screen.contains("Nombre*"));
+        assert!(screen.contains("New task") && screen.contains("Name*"));
         assert!(screen.contains("Alfa") && !screen.contains('\u{1b}'));
         form.focus = 2;
         form.handle_key(key(KeyCode::Enter), &c);
         let screen = draw(&form, 120, 40);
-        assert!(screen.contains("Asignados") && screen.contains("Tercero"));
+        assert!(screen.contains("Assignees") && screen.contains("Tercero"));
         draw(&form, 20, 6);
     }
 
@@ -1099,7 +1110,7 @@ mod tests {
     fn edit_without_changes_has_nothing_to_send() {
         let form = CreateForm::edit_task(&task());
         assert_eq!(form.body().unwrap_err(), NO_CHANGES);
-        assert_eq!(form.title(), "Editar tarea #11");
+        assert_eq!(form.title(), "Edit task #11");
         assert_eq!(form.edit_id, Some(11));
     }
 
@@ -1131,7 +1142,7 @@ mod tests {
     fn edit_keeps_validating_and_never_blanks_required_fields() {
         let mut form = CreateForm::edit_task(&task());
         form.vals[0] = Val::Text("  ".into());
-        assert!(form.body().unwrap_err().contains("Nombre"));
+        assert!(form.body().unwrap_err().contains("Name"));
         let mut form = CreateForm::edit_task(&task());
         form.vals[5] = Val::Text("-3".into());
         assert!(form.body().is_err());
@@ -1367,10 +1378,25 @@ mod tests {
         for form in [CreateForm::new(None, None), CreateForm::edit_task(&task())] {
             let shown = screen(&form, 80, 24);
             assert!(
-                shown.contains("lazyodoo") && shown.contains("Esc cancelar"),
+                shown.contains("lazyodoo") && shown.contains("Esc cancel"),
                 "{shown}"
             );
             screen(&form, 30, 8);
+        }
+    }
+
+    #[test]
+    fn labels_fit_their_column_in_every_language() {
+        for form in [CreateForm::new(None, None), CreateForm::edit_task(&task())] {
+            for def in &form.defs {
+                for lang in Lang::ALL {
+                    let label = format!("{}*", tr_in(lang, def.label));
+                    assert!(
+                        Line::from(label.as_str()).width() < LABEL_WIDTH as usize,
+                        "{lang:?}: {label}"
+                    );
+                }
+            }
         }
     }
 }

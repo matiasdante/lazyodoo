@@ -11,6 +11,7 @@ use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use serde_json::{Map, Value, json};
 
 use crate::api::ApiError;
+use crate::i18n::tr;
 use crate::odoo::Session;
 
 const DEFAULT_LIMIT: u32 = 80;
@@ -169,7 +170,7 @@ impl<'a> Params<'a> {
     fn new(items: &'a [(&'a str, String)], allowed: &[&str]) -> Result<Self, ApiError> {
         for (key, _) in items {
             if !allowed.contains(key) {
-                return Err(bad(format!("Parámetro no permitido: {key}")));
+                return Err(bad(format!("Parameter not allowed: {key}")));
             }
         }
         Ok(Self(items))
@@ -188,7 +189,7 @@ impl<'a> Params<'a> {
                 raw.parse::<i64>()
                     .ok()
                     .filter(|id| *id > 0)
-                    .ok_or_else(|| bad(format!("{key} inválido")))
+                    .ok_or_else(|| bad(format!("{key} is invalid")))
             })
             .transpose()
     }
@@ -200,7 +201,7 @@ impl<'a> Params<'a> {
                 .parse::<u32>()
                 .ok()
                 .filter(|l| (1..=MAX_LIMIT).contains(l))
-                .ok_or_else(|| bad(format!("limit tiene que estar entre 1 y {MAX_LIMIT}"))),
+                .ok_or_else(|| bad(format!("limit must be between 1 and {MAX_LIMIT}"))),
         }
     }
 
@@ -209,7 +210,7 @@ impl<'a> Params<'a> {
         match self.get(key) {
             None | Some("false") => Ok(false),
             Some("true") => Ok(true),
-            Some(_) => Err(bad(format!("{key} inválido"))),
+            Some(_) => Err(bad(format!("{key} is invalid"))),
         }
     }
 
@@ -218,7 +219,7 @@ impl<'a> Params<'a> {
             .map(|raw| {
                 NaiveDate::parse_from_str(raw, "%Y-%m-%d")
                     .map(|d| d.format("%Y-%m-%d").to_string())
-                    .map_err(|_| bad(format!("{key} inválido")))
+                    .map_err(|_| bad(format!("{key} is invalid")))
             })
             .transpose()
     }
@@ -280,7 +281,7 @@ pub fn get(session: &Session, path: &str, query: &[(&str, String)]) -> Result<Va
             }
             list(session, Model::Timesheet, domain, p.limit()?)
         }
-        other => Err(bad(format!("Ruta no soportada: {other}"))),
+        other => Err(bad(format!("Unsupported route: {other}"))),
     }
 }
 
@@ -326,7 +327,7 @@ fn search(
     let rows = session.execute(model.name(), "search_read", json!([domain]), kwargs)?;
     let rows = rows
         .as_array()
-        .ok_or_else(|| bad("search_read no devolvió una lista"))?;
+        .ok_or_else(|| bad("search_read did not return a list"))?;
 
     let mut related = Related::new();
     for (field, related_model) in model.many() {
@@ -373,7 +374,7 @@ fn me(session: &Session) -> Result<Value, ApiError> {
     )?;
     let user = users
         .get(0)
-        .ok_or_else(|| bad("No se pudo leer tu usuario"))?;
+        .ok_or_else(|| bad(tr("Could not read your user.")))?;
     let label = match text(user, "display_name") {
         label if !label.is_empty() => label,
         _ => text(user, "name"),
@@ -441,7 +442,7 @@ fn catalog(session: &Session, name: &str, project: Option<i64>) -> Result<Value,
         "task-types" => "project.type",
         "projects" => "project.project",
         "users" => "res.users",
-        other => return Err(bad(format!("Catálogo no soportado: {other}"))),
+        other => return Err(bad(format!("Unsupported catalog: {other}"))),
     };
     let users = name == "users";
     // usuarios internos, con el email para ubicarlos sin depender del nombre
@@ -478,7 +479,7 @@ fn catalog(session: &Session, name: &str, project: Option<i64>) -> Result<Value,
     }
     let rows: Vec<Value> = records
         .as_array()
-        .ok_or_else(|| bad("search_read no devolvió una lista"))?
+        .ok_or_else(|| bad("search_read did not return a list"))?
         .iter()
         .map(|r| {
             let label = match text(r, "display_name") {
@@ -535,7 +536,7 @@ fn write_model(segment: &str) -> Result<Model, ApiError> {
     match segment {
         "project-task" => Ok(Model::Task),
         "timesheet" => Ok(Model::Timesheet),
-        other => Err(bad(format!("Ruta no soportada: {other}"))),
+        other => Err(bad(format!("Unsupported route: {other}"))),
     }
 }
 
@@ -543,15 +544,15 @@ pub fn post(session: &Session, path: &str, body: &Value) -> Result<Value, ApiErr
     let model = write_model(path.trim_matches('/'))?;
     let vals = to_vals(model, body, true)?;
     if model == Model::Timesheet && vals.get("date_time").is_some() && !has_start_time(session) {
-        return Err(bad(
-            "Este Odoo no tiene el campo «date_time» en las horas: no guarda hora de inicio",
-        ));
+        return Err(bad(tr(
+            "This Odoo has no «date_time» field on timesheets: it does not store a start time",
+        )));
     }
     let created = session.execute(model.name(), "create", json!([vals]), json!({}))?;
     let id = created
         .as_i64()
         .or_else(|| created.get(0).and_then(Value::as_i64))
-        .ok_or_else(|| bad("Odoo no devolvió el id del registro creado"))?;
+        .ok_or_else(|| bad(tr("Odoo did not return the id of the created record")))?;
     reload(session, model, id)
 }
 
@@ -559,24 +560,24 @@ pub fn put(session: &Session, path: &str, body: &Value) -> Result<Value, ApiErro
     let (segment, id) = path
         .trim_matches('/')
         .split_once('/')
-        .ok_or_else(|| bad("Falta el id del registro"))?;
+        .ok_or_else(|| bad("The record id is missing"))?;
     let model = write_model(segment)?;
     let id = id
         .parse::<i64>()
         .ok()
         .filter(|id| *id > 0)
-        .ok_or_else(|| bad("Id de registro inválido"))?;
+        .ok_or_else(|| bad("Invalid record id"))?;
     let vals = to_vals(model, body, false)?;
     if vals.as_object().is_some_and(Map::is_empty) {
-        return Err(bad("No hay campos para modificar"));
+        return Err(bad("No fields to modify"));
     }
     if model == Model::Task
         && vals.get("state").is_some()
         && !session.has_field("project.task", "state")
     {
-        return Err(bad(
-            "Este Odoo no tiene el campo «state» en las tareas: cambiá el estado con «s»",
-        ));
+        return Err(bad(tr(
+            "This Odoo has no «state» field on tasks: change the stage with «s»",
+        )));
     }
     session.execute(model.name(), "write", json!([[id], vals]), json!({}))?;
     reload(session, model, id)
@@ -589,7 +590,7 @@ fn reload(session: &Session, model: Model, id: i64) -> Result<Value, ApiError> {
         // 502 = fallo ambiguo: el cambio ya quedó aplicado
         return Err(ApiError::Server(
             502,
-            "El cambio se guardó, pero no se pudo leer el registro de vuelta.".into(),
+            tr("The change was saved, but the record could not be read back.").into(),
         ));
     }
     Ok(rows.remove(0))
@@ -601,14 +602,14 @@ fn to_vals(model: Model, body: &Value, creating: bool) -> Result<Value, ApiError
     let (allowed, required) = write_spec(model);
     let object = body
         .as_object()
-        .ok_or_else(|| bad("El body tiene que ser un objeto"))?;
+        .ok_or_else(|| bad("The body must be an object"))?;
     if let Some(key) = object.keys().find(|k| !allowed.contains(&k.as_str())) {
-        return Err(bad(format!("Campo no permitido: {key}")));
+        return Err(bad(format!("Field not allowed: {key}")));
     }
     if creating {
         for key in required {
             if object.get(*key).is_none_or(Value::is_null) {
-                return Err(bad(format!("Falta el campo {key}")));
+                return Err(bad(format!("Missing field {key}")));
             }
         }
     }
@@ -639,7 +640,7 @@ fn record_id(key: &str, value: &Value) -> Result<Value, ApiError> {
     match value {
         Value::Null => Ok(json!(false)),
         Value::Number(n) if n.as_i64().is_some_and(|id| id > 0) => Ok(value.clone()),
-        _ => Err(bad(format!("{key} inválido"))),
+        _ => Err(bad(format!("{key} is invalid"))),
     }
 }
 
@@ -651,10 +652,10 @@ fn id_list(key: &str, value: &Value) -> Result<Vec<i64>, ApiError> {
             .map(|item| {
                 item.as_i64()
                     .filter(|id| *id > 0)
-                    .ok_or_else(|| bad(format!("{key} inválido")))
+                    .ok_or_else(|| bad(format!("{key} is invalid")))
             })
             .collect(),
-        _ => Err(bad(format!("{key} inválido"))),
+        _ => Err(bad(format!("{key} is invalid"))),
     }
 }
 
@@ -669,14 +670,14 @@ fn task_state(value: &Value) -> Result<Value, ApiError> {
     ];
     match value.as_str() {
         Some(state) if STATES.contains(&state) => Ok(value.clone()),
-        _ => Err(bad("state inválido")),
+        _ => Err(bad("invalid state")),
     }
 }
 
 fn hours(value: &Value) -> Result<Value, ApiError> {
     match value.as_f64() {
         Some(h) if h.is_finite() && (0.0..=24.0).contains(&h) => Ok(value.clone()),
-        _ => Err(bad("unit_amount tiene que estar entre 0 y 24")),
+        _ => Err(bad("unit_amount must be between 0 and 24")),
     }
 }
 
@@ -685,7 +686,7 @@ fn deadline(value: &Value) -> Result<Value, ApiError> {
     let raw = match value {
         Value::Null => return Ok(json!(false)),
         Value::String(raw) => raw,
-        _ => return Err(bad("date_deadline inválido")),
+        _ => return Err(bad("invalid date_deadline")),
     };
     const OUT: &str = "%Y-%m-%d %H:%M:%S";
     let utc = DateTime::parse_from_rfc3339(raw)
@@ -698,7 +699,7 @@ fn deadline(value: &Value) -> Result<Value, ApiError> {
             NaiveDate::parse_from_str(raw, "%Y-%m-%d")
                 .map(|d| d.format("%Y-%m-%d 00:00:00").to_string())
         })
-        .map_err(|_| bad("date_deadline inválido"))?;
+        .map_err(|_| bad("invalid date_deadline"))?;
     Ok(json!(utc))
 }
 

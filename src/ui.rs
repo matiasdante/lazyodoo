@@ -7,6 +7,7 @@ use ratatui::widgets::{
 };
 
 use crate::app::{App, Confirm, ListPanel, Load, Panel};
+use crate::i18n::{tr, trf};
 use crate::models::{Row, sanitize};
 use crate::theme;
 
@@ -40,7 +41,13 @@ pub fn render(frame: &mut Frame, app: &App, spinner: char) {
         .iter()
         .map(|p| {
             let mark = if p.id == applied { "● " } else { "  " };
-            format!("{mark}{}", p.label())
+            // «Todos» es una fila que arma la app: se traduce al dibujar, no al cargar
+            let label = if p.id == 0 {
+                tr("All").into()
+            } else {
+                p.label()
+            };
+            format!("{mark}{label}")
         })
         .collect();
     let hours_total: f64 = app.hours.items.iter().map(|h| h.unit_amount).sum();
@@ -50,7 +57,7 @@ pub fn render(frame: &mut Frame, app: &App, spinner: char) {
         frame,
         p1,
         &Spec::new(
-            "[1] Proyectos",
+            &format!("[1] {}", tr("Projects")),
             focus == Panel::Projects,
             spinner,
             app.filtering,
@@ -61,7 +68,12 @@ pub fn render(frame: &mut Frame, app: &App, spinner: char) {
     list(
         frame,
         p2,
-        &Spec::new("[2] Tareas", focus == Panel::Tasks, spinner, app.filtering),
+        &Spec::new(
+            &format!("[2] {}", tr("Tasks")),
+            focus == Panel::Tasks,
+            spinner,
+            app.filtering,
+        ),
         &app.tasks,
         labels(&app.tasks),
     );
@@ -69,7 +81,7 @@ pub fn render(frame: &mut Frame, app: &App, spinner: char) {
         frame,
         p3,
         &Spec::new(
-            &format!("[3] Horas semana · {hours_total:.1}h"),
+            &format!("[3] {} · {hours_total:.1}h", tr("Hours this week")),
             focus == Panel::Hours,
             spinner,
             app.filtering,
@@ -83,7 +95,7 @@ pub fn render(frame: &mut Frame, app: &App, spinner: char) {
         .scroll((app.detail_scroll, 0))
         .block(
             Block::default()
-                .title(Line::styled(" Detalle ", theme::dim()))
+                .title(Line::styled(format!(" {} ", tr("Detail")), theme::dim()))
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .border_style(theme::border(false)),
@@ -165,9 +177,9 @@ fn list<T: Row>(
     }
     if labels.is_empty() {
         let text = if panel.load == Load::Loading {
-            "cargando…"
+            tr("loading…")
         } else {
-            "(vacío)"
+            tr("(empty)")
         };
         frame.render_widget(
             Paragraph::new(Span::styled(text, theme::dim())).block(block),
@@ -201,7 +213,7 @@ fn styled_detail(text: &str) -> Vec<Line<'static>> {
             match line.split_once(':') {
                 Some((label, value))
                     if !label.is_empty()
-                        && label.chars().count() <= 11
+                        && label.chars().count() <= 14
                         && label.chars().all(char::is_alphabetic) =>
                 {
                     Line::from(vec![
@@ -216,8 +228,11 @@ fn styled_detail(text: &str) -> Vec<Line<'static>> {
 }
 
 fn top_line(app: &App) -> Line<'static> {
-    let scope = if app.mine { "mías" } else { "todas" };
-    let project = app.project.as_ref().map_or("todos", |p| p.name.as_str());
+    let scope = if app.mine { tr("mine") } else { tr("all") };
+    let project = app
+        .project
+        .as_ref()
+        .map_or(tr("all projects"), |p| p.name.as_str());
     let mut spans = vec![
         Span::styled(" lazyodoo ", theme::badge()),
         Span::styled(
@@ -226,7 +241,7 @@ fn top_line(app: &App) -> Line<'static> {
         ),
         Span::styled(scope, theme::heading()),
         Span::styled(" (m)", theme::dim()),
-        Span::styled(" · proyecto: ", theme::dim()),
+        Span::styled(format!(" · {}: ", tr("project")), theme::dim()),
         Span::styled(sanitize(project), Style::new().add_modifier(Modifier::BOLD)),
     ];
     if let Some(notice) = &app.notice {
@@ -240,13 +255,19 @@ fn top_line(app: &App) -> Line<'static> {
 
 fn hints(app: &App) -> String {
     let text = if app.filtering {
-        "escribí para filtrar · Enter aplicar · Esc limpiar"
+        tr("type to filter · Enter apply · Esc clear")
     } else if app.focus == Panel::Projects {
-        "1-3 panel · j/k mover · Enter aplicar proyecto · m mías/todas · / filtrar · r refrescar · q salir"
+        tr(
+            "1-3 panel · j/k move · Enter apply project · m mine/all · / filter · r refresh · l language · q quit",
+        )
     } else if app.focus == Panel::Tasks {
-        "j/k mover · t horas · n nueva · e editar · c completar · a asignar · s estado · p prio · q salir"
+        tr(
+            "j/k move · t hours · n new · e edit · c complete · a assign · s stage · p prio · l language · q quit",
+        )
     } else {
-        "1-3 panel · j/k mover · J/K detalle · m mías/todas · / filtrar · r refrescar · q salir"
+        tr(
+            "1-3 panel · j/k move · J/K detail · m mine/all · / filter · r refresh · l language · q quit",
+        )
     };
     format!(" {text}")
 }
@@ -280,14 +301,17 @@ fn render_confirm(frame: &mut Frame, confirm: &Confirm, spinner: char) {
     );
     frame.render_widget(Clear, rect);
     let block = Block::default()
-        .title(Line::styled(" Completar tarea ", theme::heading()))
+        .title(Line::styled(
+            format!(" {} ", tr("Complete task")),
+            theme::heading(),
+        ))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(theme::border(true));
     let inner = block.inner(rect);
     frame.render_widget(block, rect);
     let status = if confirm.sending {
-        Line::styled(format!("{spinner} Guardando…"), theme::heading())
+        Line::styled(format!("{spinner} {}", tr("Saving…")), theme::heading())
     } else if let Some(error) = &confirm.error {
         Line::styled(
             sanitize(error),
@@ -302,21 +326,24 @@ fn render_confirm(frame: &mut Frame, confirm: &Confirm, spinner: char) {
     );
     let text = vec![
         if confirm.after_hours {
-            Line::styled("Horas cargadas. Finalizando la tarea…", theme::heading())
+            Line::styled(tr("Hours logged. Finishing the task…"), theme::heading())
         } else {
-            Line::raw("¿Marcar como completada?")
+            Line::raw(tr("Mark as completed?"))
         },
         label,
         Line::styled(
-            format!("Horas cargadas: {:.1} h", confirm.hours),
+            trf(
+                "Hours logged: {hours} h",
+                &[("hours", &format!("{:.1}", confirm.hours))],
+            ),
             theme::dim(),
         ),
         status,
         Line::raw(""),
         hint_line(if confirm.after_hours {
-            "Enter reintentar · Esc cerrar"
+            tr("Enter retry · Esc close")
         } else {
-            "Enter confirmar · Esc cancelar"
+            tr("Enter confirm · Esc cancel")
         }),
     ];
     frame.render_widget(Paragraph::new(text).wrap(Wrap { trim: true }), inner);
@@ -386,14 +413,14 @@ mod tests {
     fn renders_panels_detail_and_errors() {
         let screen = draw(&loaded_app(), 120, 40);
         for expected in [
-            "[1] Proyectos",
-            "[2] Tareas",
-            "[3] Horas semana",
-            "● Todos",
+            "[1] Projects",
+            "[2] Tasks",
+            "[3] Hours this week",
+            "● All",
             "#5 Hacer ",
             "Detalle largo",
             "502 de prueba",
-            "me@example.com @ odoo.example.com · mías",
+            "me@example.com @ odoo.example.com · mine",
         ] {
             assert!(screen.contains(expected), "falta {expected:?}");
         }
@@ -416,8 +443,8 @@ mod tests {
             ratatui::crossterm::event::KeyModifiers::NONE,
         ));
         let screen = draw(&app, 120, 40);
-        assert!(screen.contains("Cargar horas · #5 Hacer "));
-        assert!(screen.contains("0 a 24"));
+        assert!(screen.contains("Log hours · #5 Hacer "));
+        assert!(screen.contains("0-24"));
         draw(&app, 20, 6);
     }
 
@@ -429,10 +456,10 @@ mod tests {
             ratatui::crossterm::event::KeyModifiers::NONE,
         ));
         let screen = draw(&app, 120, 40);
-        assert!(screen.contains("Completar tarea") && screen.contains("¿Marcar como completada?"));
-        assert!(screen.contains("#5 Hacer ") && screen.contains("Enter confirmar"));
-        app.confirm.as_mut().unwrap().error = Some("Acceso denegado: x".into());
-        assert!(draw(&app, 120, 40).contains("Acceso denegado: x"));
+        assert!(screen.contains("Complete task") && screen.contains("Mark as completed?"));
+        assert!(screen.contains("#5 Hacer ") && screen.contains("Enter confirm"));
+        app.confirm.as_mut().unwrap().error = Some("Access denied: x".into());
+        assert!(draw(&app, 120, 40).contains("Access denied: x"));
         draw(&app, 12, 5);
     }
 
@@ -464,7 +491,7 @@ mod tests {
     #[test]
     fn tasks_panel_advertises_completion() {
         let app = loaded_app();
-        assert!(hints(&app).contains("c completar"));
+        assert!(hints(&app).contains("c complete"));
     }
 
     #[test]
@@ -472,8 +499,8 @@ mod tests {
         let mut app = loaded_app();
         press_c(&mut app);
         let screen = draw(&app, 120, 40);
-        assert!(screen.contains("Horas cargadas: 1.5 h"), "{screen}");
-        assert!(screen.contains("¿Marcar como completada?"));
+        assert!(screen.contains("Hours logged: 1.5 h"), "{screen}");
+        assert!(screen.contains("Mark as completed?"));
     }
 
     fn press_c(app: &mut App) {

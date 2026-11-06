@@ -1,229 +1,255 @@
 <div align="center">
 
+**English** · [Español](docs/readme/README_es.md) · [Português (Brasil)](docs/readme/README_pt-BR.md) · [简体中文](docs/readme/README_zh.md)
+
 # lazyodoo
 
-### Tareas y horas de Odoo desde la terminal, al estilo [lazygit](https://github.com/jesseduffield/lazygit) y [lazydocker](https://github.com/jesseduffield/lazydocker).
+### Odoo tasks and timesheets from the terminal, in the style of [lazygit](https://github.com/jesseduffield/lazygit) and [lazydocker](https://github.com/jesseduffield/lazydocker).
 
-**Una TUI en Rust (ratatui) que se conecta directo a Odoo por JSON-RPC. No necesita ninguna API de por medio: cada usuario entra con su propio usuario de Odoo, así que los permisos los decide Odoo.**
+**A Rust TUI (ratatui) that talks straight to Odoo over JSON-RPC. No API in between: every person signs in with their own Odoo user, so Odoo decides the permissions.**
 
-[![Rust](https://img.shields.io/badge/Rust-2024%20edition-dea584?style=flat-square&logo=rust&logoColor=white)](#requisitos)
-[![ratatui](https://img.shields.io/badge/ratatui-0.30-5c4ee5?style=flat-square)](#desarrollo)
-[![Odoo](https://img.shields.io/badge/Odoo-17-714b67?style=flat-square)](#cómo-funciona)
+[![Rust](https://img.shields.io/badge/Rust-2024%20edition-dea584?style=flat-square&logo=rust&logoColor=white)](#requirements)
+[![ratatui](https://img.shields.io/badge/ratatui-0.30-5c4ee5?style=flat-square)](#development)
+[![Odoo](https://img.shields.io/badge/Odoo-17-714b67?style=flat-square)](#how-it-works)
+[![Languages](https://img.shields.io/badge/languages-EN%20%C2%B7%20ES%20%C2%B7%20PT%20%C2%B7%20%E4%B8%AD%E6%96%87-5c4ee5?style=flat-square)](#languages)
 
-[Inicio rápido](#inicio-rápido) · [Pantalla](#pantalla) · [Controles](#controles) · [Cómo funciona](#cómo-funciona) · [Si algo falla](#si-algo-falla) · [Datos locales](#datos-locales) · [Preguntas frecuentes](#preguntas-frecuentes) · [Desarrollo](#desarrollo)
+[Showcase](#showcase) · [Quick start](#quick-start) · [Screen](#screen) · [Controls](#controls) · [How it works](#how-it-works) · [If something fails](#if-something-fails) · [Local data](#local-data) · [Languages](#languages) · [FAQ](#faq) · [Development](#development)
 
 </div>
 
 > [!NOTE]
-> lazyodoo habla directamente con `https://<odoo>/jsonrpc`. Necesitás el nombre de la base de datos y tu usuario con API key de Odoo.
+> lazyodoo talks directly to `https://<odoo>/jsonrpc`. You need the name of the Odoo database and your user with an Odoo API key.
 
 ---
 
-Con lazyodoo ves **solo lo que tenés asignado y sigue abierto**: tus tareas y los proyectos donde las tenés. Podés cargar horas sobre una tarea, crear tareas, cambiar asignación, estado, prioridad y demás datos, y **completar tareas** para que salgan de la lista. En el primer arranque te pide los datos de acceso y **los valida contra Odoo antes de guardarlos**.
+With lazyodoo you see **only what is assigned to you and still open**: your tasks and the projects they belong to. You can log hours on a task, create tasks, change assignees, stage, priority and other data, and **complete tasks** so they leave the list. On the first start it asks for your access details and **checks them against Odoo before saving them**.
 
-## Inicio rápido
+## Showcase
 
-### Requisitos
+<p align="center"><img src="docs/media/demo.gif" alt="lazyodoo demo" width="800"></p>
 
-- Un Odoo 17 (Community o Enterprise) con las apps Proyecto y Hojas de horas, sin módulos extra.
-- El nombre de la base de datos de Odoo.
-- Un usuario interno de Odoo (los usuarios portal se rechazan) y su API key. Con contraseña también anda, salvo que el usuario tenga 2FA.
-- Para compilar: Rust estable con edición 2024 (1.85 o más; probado con 1.97.1) y un compilador de C (lo necesita la criptografía TLS). No hace falta OpenSSL: TLS va con rustls.
+## Quick start
 
-### Instalación
+### Requirements
 
-Clonás el repositorio y, desde su carpeta:
+- An Odoo 17 (Community or Enterprise) with the Project and Timesheets apps, no extra modules.
+- The name of the Odoo database.
+- An internal Odoo user (portal users are rejected) and its API key. A password also works, unless the user has 2FA.
+- To build: stable Rust with the 2024 edition (1.85 or newer; tested with 1.97.1) and a C compiler (TLS cryptography needs it). OpenSSL is not needed: TLS uses rustls.
+
+### Installation
+
+Clone the repository and, from its folder:
 
 ```sh
 cargo install --path . --locked
 ```
 
-El binario queda en `~/.cargo/bin/lazyodoo`. Si preferís no instalarlo, `cargo build --release` lo deja en `target/release/lazyodoo`. `lazyodoo --version` muestra la versión.
+The binary ends up in `~/.cargo/bin/lazyodoo`. If you prefer not to install it, `cargo build --release` leaves it in `target/release/lazyodoo`. `lazyodoo --version` prints the version.
 
-### Ejecución
+### Running
 
 ```sh
 lazyodoo
 ```
 
-En el primer arranque se abre el formulario de acceso:
+On the first start it asks for your **language** (English, Spanish, Portuguese or Chinese) and then opens the access form:
 
-| Campo | Qué poner |
+| Field | What to enter |
 | --- | --- |
-| URL de Odoo | Solo el origen, por ejemplo `https://odoo.example.com` (sin ruta). Se exige `https`, salvo para `localhost`. |
-| Base de datos | Nombre de la base de Odoo |
-| Usuario de Odoo | Tu login, normalmente tu email (`nombre@example.com`) |
-| API key de Odoo | Tu API key (recomendada en lugar de la contraseña) |
+| Odoo URL | Just the origin, for example `https://odoo.example.com` (no path). `https` is required, except for `localhost`. |
+| Database | Name of the Odoo database |
+| Odoo user | Your login, usually your email (`name@example.com`) |
+| Odoo API key | Your API key (recommended over the password) |
 
-`Enter` pasa al campo siguiente y, en el último, valida contra Odoo y guarda. Si algo no anda, el mensaje te dice qué corregir y no se guarda nada ([ver errores](#si-algo-falla)). Si todo anda, entrás directo a la pantalla principal; en los próximos arranques no se vuelve a pedir.
+`Enter` moves to the next field and, on the last one, checks against Odoo and saves. If something is wrong, the message tells you what to fix and nothing is saved ([see errors](#if-something-fails)). If all is well, you go straight to the main screen; later starts do not ask again.
 
-## Pantalla
+## Screen
 
-Al abrir se muestra el banner de lazyodoo; seguí con `Enter` (o esperá un momento). La interfaz usa la paleta de Odoo sobre el fondo de tu terminal: con truecolor (`COLORTERM=truecolor`, o Windows Terminal) los colores son exactos y, si no, se usa la aproximación más cercana de 256 colores.
+On start the lazyodoo banner shows; continue with any key (or wait a moment). The interface uses the Odoo palette over your terminal background: with truecolor (`COLORTERM=truecolor`, or Windows Terminal) the colors are exact, otherwise the closest 256-color approximation is used.
 
 ```text
- lazyodoo  nombre@example.com @ odoo.example.com · mías · proyecto: todos
-╭ [1] Proyectos ──────╮╭ Detalle ─────────────────────────────────╮
-│● Todos              ││#11 Migrar base                           │
-│  Alfa               ││                                          │
-╰─────────────────────╯│Proyecto:  Alfa                           │
-╭ [2] Tareas ─────────╮│Estado:    En ejecución                   │
-│#11 Migrar base      ││Asignados: Nombre Apellido                │
-│                     ││Horas:     8.0 asignadas · 2.0 cargadas   │
+ lazyodoo  name@example.com @ odoo.example.com · mine · project: all projects
+╭ [1] Projects ───────╮╭ Detail ──────────────────────────────────╮
+│● All                ││#11 Migrate database                      │
+│  Alpha              ││                                          │
+╰─────────────────────╯│Project:   Alpha                          │
+╭ [2] Tasks ──────────╮│Stage:     In progress                    │
+│#11 Migrate database ││Assignees: First Last                     │
+│                     ││Hours:     8.0 allocated · 2.0 logged · … │
 ╰─────────────────────╯│                                          │
-╭ [3] Horas semana ───╮│Pasar la base a v17                       │
+╭ [3] Hours this week ╮│Move the database to v17                  │
 │                     ││                                          │
 ╰─────────────────────╯╰──────────────────────────────────────────╯
- j/k · t horas · n nueva · e editar · a asignar · s estado · …
+ j/k move · t hours · n new · e edit · a assign · s stage · …
 ```
 
-- **Proyectos.** Solo los proyectos donde tenés tareas abiertas asignadas (con `m` pasan a ser todos). Con `Enter` aplicás uno como filtro de tareas y horas. «Todos» lo saca.
-- **Tareas.** Lista a la izquierda y detalle a la derecha. Por defecto solo lo asignado a vos y no finalizado: al completar una tarea, desaparece y la lista baja.
-- **Horas.** Las líneas de la semana en curso (desde el lunes), con el total en el título.
-- Cada panel carga por separado: si uno falla, el error aparece en ese panel y los demás siguen funcionando.
+- **Projects.** Only the projects where you have open assigned tasks (with `m` it becomes all of them). `Enter` applies one as a filter for tasks and hours. «All» removes it.
+- **Tasks.** List on the left and detail on the right. By default only what is assigned to you and not finished: when you complete a task it disappears and the list moves up.
+- **Hours.** The timesheet lines of the current week (since Monday), with the total in the title.
+- Each panel loads on its own: if one fails, the error shows in that panel and the others keep working.
 
-## Controles
+## Controls
 
-| Tecla | Acción |
+| Key | Action |
 | --- | --- |
-| `1` `2` `3` · `Tab` `Shift+Tab` | cambiar de panel |
-| `j` `k` · `↑` `↓` · `g` `G` | mover la selección, ir al principio o al final |
-| `J` `K` · `PgDn` `PgUp` | desplazar el detalle |
-| `Enter` | en Proyectos: aplicar el proyecto como filtro |
-| `m` | alternar «mías» y «todas» (las dos muestran solo lo abierto) |
-| `/` · `Esc` | filtrar el panel por texto · limpiar el filtro |
-| `r` | refrescar todo (el cursor se queda sobre el mismo registro) |
-| `q` · `Ctrl+C` | salir |
+| `1` `2` `3` · `Tab` `Shift+Tab` | switch panel |
+| `j` `k` · `↑` `↓` · `g` `G` | move the selection, go to the start or the end |
+| `J` `K` · `PgDn` `PgUp` | scroll the detail |
+| `Enter` | in Projects: apply the project as a filter |
+| `m` | toggle «mine» and «all» (both show only what is open) |
+| `/` · `Esc` | filter the panel by text · clear the filter |
+| `r` | refresh everything (the cursor stays on the same record) |
+| `l` | switch language (it cycles through the four and is saved) |
+| `q` · `Ctrl+C` | quit |
 
-En Tareas, sobre la tarea seleccionada:
+In Tasks, on the selected task:
 
-| Tecla | Acción |
+| Key | Action |
 | --- | --- |
-| `n` | crear una tarea |
-| `e` | editar en un formulario |
-| `a` | cambiar asignados (varios) y guardar al elegir |
-| `s` | cambiar estado y guardar al elegir |
-| `p` | cambiar prioridad y guardar al elegir |
-| `t` | cargar horas |
-| `c` | completar la tarea (pide confirmación) |
+| `n` | create a task |
+| `e` | edit in a form |
+| `a` | change assignees (several) and save on pick |
+| `s` | change stage and save on pick |
+| `p` | change priority and save on pick |
+| `t` | log hours |
+| `c` | complete the task (asks for confirmation) |
 
-Los formularios ocupan toda la pantalla. Los campos de texto tienen cursor (`←` `→` `Inicio` `Fin` `Supr`). Dentro de los formularios:
+Forms take the whole screen. Text fields have a cursor (`←` `→` `Home` `End` `Del`). Inside forms:
 
-| Tecla | Acción |
+| Key | Action |
 | --- | --- |
-| `Tab` `Shift+Tab` · `↑` `↓` | moverse entre campos |
-| `Enter` | abrir el selector del campo, o pasar al siguiente; en el último campo de texto, enviar |
-| `Ctrl+S` | enviar desde cualquier campo |
-| `Backspace` | borrar texto o limpiar la selección de un selector (los campos selector llevan `▾`) |
-| `Esc` | cancelar (mientras envía no se puede cancelar) |
+| `Tab` `Shift+Tab` · `↑` `↓` | move between fields |
+| `Enter` | open the field's picker, or go to the next one; on the last text field, send |
+| `Ctrl+S` | send from any field |
+| `Backspace` | delete text or clear a picker's selection (picker fields show `▾`) |
+| `Esc` | cancel (while sending it cannot be cancelled) |
 
-En los selectores, escribir filtra la lista, `Enter` elige (o marca y desmarca en los de selección múltiple) y `Esc` cierra.
+In pickers, typing filters the list, `Enter` picks (or toggles in multi-select ones) and `Esc` closes.
 
-## Cómo funciona
+## How it works
 
-- **Conexión.** Cada pedido es un `POST` JSON-RPC a `<url>/jsonrpc`. Primero se autentica con `common.authenticate` y después usa `execute_kw` con tu `uid` y tu clave.
-- **Permisos.** Son solo los de tu usuario en Odoo: lazyodoo no agrega ni quita ninguno. Se rechazan los usuarios portal (`share`).
-- **Quién sos.** Por el `uid` de tu sesión, no por comparar emails: «mías» siempre funciona. Tu empleado (`hr.employee`) se busca por tu usuario y filtra tus horas en Odoo; si no existe, las horas se filtran por nombre.
-- **Qué es «abierto».** Las tareas con `state` distinto de `1_done` y `1_canceled`. Si tu Odoo no tiene ese campo (se consulta con `fields_get`), se usa `is_closed` y, si tampoco está, no se filtra. Completar una tarea escribe `state = 1_done` (Hecha), previa confirmación; la confirmación muestra las horas cargadas en la tarea y sus subtareas, tal como están en la lista (si las cargaste por otro lado, refrescá con `r`).
-- **Qué lee y escribe.** Solo estos modelos y campos, sin acceso genérico a Odoo:
+- **Connection.** Every request is a JSON-RPC `POST` to `<url>/jsonrpc`. It first authenticates with `common.authenticate` and then uses `execute_kw` with your `uid` and your key.
+- **Permissions.** Only those of your Odoo user: lazyodoo neither adds nor removes any. Portal users (`share`) are rejected.
+- **Who you are.** By the `uid` of your session, not by comparing emails: «mine» always works. Your employee (`hr.employee`) is looked up from your user and filters your hours in Odoo; if there is none, hours are filtered by name.
+- **What «open» means.** Tasks whose `state` is neither `1_done` nor `1_canceled`. If your Odoo does not have that field (checked with `fields_get`), `is_closed` is used and, if that is missing too, nothing is filtered. Completing a task writes `state = 1_done` (Done) after confirmation; the confirmation shows the hours logged on the task and its subtasks, as they are in the list (if you logged them somewhere else, refresh with `r`).
+- **What it reads and writes.** Only these models and fields, with no generic access to Odoo:
 
-| Para qué | Modelo de Odoo |
+| Purpose | Odoo model |
 | --- | --- |
-| Usuarios, proyectos, estados y tags | `res.users`, `project.project`, `project.task.type`, `project.tags` |
-| Tareas (leer, crear, editar) | `project.task` |
-| Horas (leer, crear) | `account.analytic.line` |
-| Tu empleado (para filtrar tus horas) | `hr.employee` |
+| Users, projects, stages and tags | `res.users`, `project.project`, `project.task.type`, `project.tags` |
+| Tasks (read, create, edit) | `project.task` |
+| Hours (read, create) | `account.analytic.line` |
+| Your employee (to filter your hours) | `hr.employee` |
 
-- **Edición.** Se manda solo lo que cambió; limpiar un campo opcional lo vacía en Odoo. Si el formulario no tiene cambios, no hace ningún pedido.
-- **Validación.** Antes de enviar se aplican los límites del formulario y de `routes`: nombre de 1 a 256 caracteres, horas mayores a 0 y hasta 24, fecha `DD-MM-AA`, horas asignadas no negativas, ids válidos y solo campos de la lista permitida.
-- **Fechas.** Se escriben como `DD-MM-AA`: solo entran dígitos, los guiones se ponen solos y no se puede armar una fecha imposible (mes mayor a 12, 31 de febrero…). En las horas no se admiten fechas futuras ni un año mayor al actual; el deadline no tiene tope de año. También se puede pegar `05/11/2026`. El deadline se pide en tu hora local y se guarda en UTC, como espera Odoo.
-- **Hora de inicio.** El formulario de horas pide fecha, hora de inicio (`HH:MM`, con los dos puntos automáticos), horas y descripción: así podés cargar lo que hiciste ayer a las 10:00 y no con la hora en que lo cargás. La hora de inicio se guarda en el campo `date_time` de las líneas de horas y se muestra en el panel Horas y en el detalle. Solo aparece si tu Odoo tiene ese campo (se detecta con `fields_get`); si no, el formulario lo avisa y no la pide. La fecha y la hora de inicio no pueden ser futuras.
-- **Finalizar tarea.** El formulario de horas termina con `Finalizar tarea? [ ]` (se marca con `Espacio`). Si lo marcás, primero se cargan las horas y después la tarea se completa (estado Hecha), igual que con `c`. Si las horas se guardan pero no se puede finalizar, el mensaje lo dice y `Enter` reintenta solo la finalización.
-- **Escrituras.** Nunca se reintentan solas. Si hay un timeout o un error 5xx, el mensaje avisa que **puede haberse guardado** y te manda a revisar el panel antes de reintentar.
-- **Seguridad.** Se exige `https` (salvo `localhost`), no se siguen redirects y el texto que viene de Odoo se limpia de caracteres de control antes de dibujarse. Los secretos no se muestran en pantalla ni aparecen en los mensajes de error.
+- **Editing.** Only what changed is sent; clearing an optional field empties it in Odoo. If the form has no changes, no request is made.
+- **Validation.** Before sending, the limits of the form and of `routes` apply: name of 1 to 256 characters, hours greater than 0 and up to 24, date `DD-MM-YY`, non-negative allocated hours, valid ids and only fields from the allowed list.
+- **Dates.** They are typed as `DD-MM-YY`: only digits go in, the dashes are added for you and an impossible date cannot be built (month above 12, February 31…). For hours, future dates and years later than the current one are not accepted; the deadline has no year limit. You can also paste `05/11/2026`. The deadline is asked in your local time and stored in UTC, as Odoo expects.
+- **Start time.** The hours form asks for date, start time (`HH:MM`, colon added for you), hours and description, so you can log what you did yesterday at 10:00 rather than at the time you log it. The start time is stored in the `date_time` field of the timesheet lines and shown in the Hours panel and in the detail. It only appears if your Odoo has that field (detected with `fields_get`); otherwise the form says so and does not ask for it. Neither the date nor the start time can be in the future.
+- **Finish task.** The hours form ends with `Finish task? [ ]` (toggled with `Space`). If you tick it, the hours are logged first and then the task is completed (Done), just like with `c`. If the hours are saved but the task cannot be finished, the message says so and `Enter` retries only the finishing.
+- **Writes.** They are never retried on their own. On a timeout or a 5xx error, the message warns that it **may have been saved** and sends you to check the panel before retrying.
+- **Security.** `https` is required (except for `localhost`), redirects are not followed and text coming from Odoo is stripped of control characters before being drawn. Secrets are not shown on screen and do not appear in error messages.
 
-## Si algo falla
+## If something fails
 
-| Mensaje | Causa y solución |
+Messages appear in the language you chose. These are the English ones:
+
+| Message | Cause and fix |
 | --- | --- |
-| «Usuario, clave o base de datos de Odoo inválidos» | Revisá el login, la API key y el nombre de la base. |
-| «Odoo respondió 502: … database "x" does not exist» | El nombre de la base de datos está mal. |
-| «Acceso denegado: Solo los usuarios internos pueden usar lazyodoo» | Tu usuario es portal. Hace falta un usuario interno. |
-| «Acceso denegado: …» (con el texto de Odoo) | Tu usuario no tiene permiso para esa operación en Odoo. |
-| «Odoo respondió 400: …» | Odoo rechazó los datos; el mensaje es el de Odoo. Corregí el formulario y reenviá. |
-| «No hubo respuesta en 15s» / «No se pudo conectar» | Revisá la URL y tu conexión. |
-| «La URL respondió, pero no parece ser Odoo» | El dominio no es el de Odoo, la ruta `/jsonrpc` está bloqueada o un proxy cortó el pedido. |
-| «…tiene permisos 644: otros usuarios podrían leer los secretos» | Ejecutá el `chmod 600` que indica el mensaje. |
-| «Config inválida … Borrá el archivo» | El archivo de configuración está incompleto o dañado. Borralo y cargá los datos de nuevo. |
-| «No pude ubicar tu usuario» / «No pude leer tu usuario» | Falló la lectura de tu usuario: se muestran todos los registros. Refrescá con `r` o revisá la conexión. |
+| «Invalid Odoo user, key or database» | Check the login, the API key and the database name. |
+| «Odoo answered 502: … database "x" does not exist» | The database name is wrong. |
+| «Access denied: Only internal users can use lazyodoo» | Your user is a portal user. An internal user is needed. |
+| «Access denied: …» (with Odoo's text) | Your user lacks permission for that operation in Odoo. |
+| «Odoo answered 400: …» | Odoo rejected the data; the message is Odoo's. Fix the form and send again. |
+| «No response in 15s» / «Could not connect» | Check the URL and your connection. |
+| «The URL answered, but it does not look like Odoo» | The domain is not Odoo's, the `/jsonrpc` path is blocked or a proxy cut the request. |
+| «… has permissions 644: other users could read the secrets» | Run the `chmod 600` the message gives. |
+| «Invalid config in … Delete the file» | The configuration file is incomplete or damaged. Delete it and enter the details again. |
+| «Could not locate your user» / «Could not read your user» | Reading your user failed: every record is shown. Refresh with `r` or check the connection. |
 
-## Datos locales
+## Local data
 
-lazyodoo guarda un solo archivo, con tus credenciales **en texto plano**:
+lazyodoo keeps two small files in its configuration folder:
 
-| Sistema | Ruta |
+| File | Contents |
 | --- | --- |
-| Linux | `~/.config/lazyodoo/config.toml` |
-| Windows | `%APPDATA%\lazyodoo\config.toml` |
-| macOS | `~/Library/Application Support/lazyodoo/config.toml` |
+| `config.toml` | Your Odoo access details, with your credentials **in plain text** |
+| `settings.toml` | The language you chose (not secret) |
 
-En Linux y macOS el archivo se crea con permisos `0600` (y la carpeta con `0700`), y la app se niega a arrancar si están más abiertos. En Windows no se ajustan permisos: protegé la carpeta con los permisos de tu usuario. Para cambiar de servidor o de usuario, borrá el archivo y el próximo arranque vuelve a pedir los datos.
+| System | Folder |
+| --- | --- |
+| Linux | `~/.config/lazyodoo/` |
+| Windows | `%APPDATA%\lazyodoo\` |
+| macOS | `~/Library/Application Support/lazyodoo/` |
 
-## Preguntas frecuentes
+On Linux and macOS the files are created with `0600` permissions (and the folder with `0700`), and the app refuses to start if `config.toml` is more open. On Windows permissions are not adjusted: protect the folder with your user's permissions. To change server or user, delete `config.toml` and the next start asks for the details again. To pick the language again, delete `settings.toml` (or press `l`).
+
+## Languages
+
+English, Spanish (`es`), Portuguese (`pt`) and Chinese (`zh`). On the first start, after the banner, lazyodoo asks which one to use (`↑` `↓` and `Enter`, or `1`–`4`); the choice is saved in `settings.toml`. In the main screen, `l` switches to the next language and saves it too.
+
+Everything lazyodoo writes is translated: panels, forms, hints and messages. What comes from Odoo (names of projects, tasks and stages, and the texts of errors that Odoo itself writes) is shown as Odoo sends it.
+
+## FAQ
 
 <details>
-<summary><strong>¿Guarda mi clave de Odoo?</strong></summary>
+<summary><strong>Does it save my Odoo key?</strong></summary>
 
-Sí, en texto plano en el archivo de configuración, protegido con permisos `0600`. Usá una API key de Odoo en lugar de tu contraseña: se puede revocar sin cambiar la clave de tu cuenta, y funciona aunque tengas 2FA.
+Yes, in plain text in the configuration file, protected with `0600` permissions. Use an Odoo API key instead of your password: it can be revoked without changing your account password, and it works even if you have 2FA.
 
 </details>
 
 <details>
-<summary><strong>¿Veo las horas de otras personas, o no veo mis horas?</strong></summary>
+<summary><strong>Do I see other people's hours, or not see mine?</strong></summary>
 
-Las horas «mías» se filtran en Odoo por tu empleado (el `hr.employee` vinculado a tu usuario). Si tu usuario no tiene empleado, se filtran por nombre de empleado igual al de tu usuario; si tampoco coincide, aparece un aviso y `m` muestra todas.
+The «mine» hours are filtered in Odoo by your employee (the `hr.employee` linked to your user). If your user has no employee, they are filtered by an employee name equal to your user's; if that does not match either, a notice appears and `m` shows all of them.
 
 </details>
 
 <details>
-<summary><strong>¿Puede borrar datos?</strong></summary>
+<summary><strong>Can it delete data?</strong></summary>
 
-No. Solo lee, crea y modifica.
+No. It only reads, creates and modifies.
 
 </details>
 
-## Desarrollo
+## Development
 
 ```sh
 cargo build
-cargo test            # no necesita red ni Odoo: usa un Odoo simulado en localhost
+cargo test            # needs no network or Odoo: it uses a fake Odoo on localhost
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```
 
 ```text
 src/
-  main.rs         Terminal, arranque y ciclo de eventos
-  config.rs       Configuración, validación de la URL y guardado con permisos 0600
-  api.rs          Fachada que usa la app (get/post/put) y los errores
-  odoo.rs         Sesión JSON-RPC: autenticación, execute_kw y errores de Odoo
-  routes.rs       Rutas, dominios, campos y serializers
-  wizard.rs       Formulario de primer arranque
-  app.rs          Estado, teclas y pedidos de la pantalla principal
-  ui.rs           Dibujo de los paneles
-  theme.rs        Paleta de Odoo (violeta #714B67, verde azulado #017E84, gris #8F8F8F)
-  banner.rs       Banner de inicio
-  models.rs       Modelos y texto de listas y detalle
-  inputs.rs       Edición de texto con cursor, ajuste de línea y máscara de fecha DD-MM-AA
-  hours_form.rs   Formulario de carga de horas
-  create_form.rs  Formularios de alta y edición, con selectores
-  testutil.rs     Odoo simulado para los tests (solo en tests)
+  main.rs         Terminal, startup and event loop
+  config.rs       Configuration, URL validation, saving with 0600 permissions and the language setting
+  api.rs          Facade the app uses (get/post/put) and the errors
+  odoo.rs         JSON-RPC session: authentication, execute_kw and Odoo errors
+  routes.rs       Routes, domains, fields and serializers
+  wizard.rs       First-start form
+  lang_select.rs  Language picker for the first start
+  i18n.rs         Languages and text lookup (tr/trf)
+  ui_strings.rs   The interface texts in the four languages
+  app.rs          State, keys and requests of the main screen
+  ui.rs           Drawing of the panels
+  theme.rs        Odoo palette (purple #714B67, teal #017E84, gray #8F8F8F)
+  banner.rs       Start banner
+  models.rs       Models and text of lists and detail
+  inputs.rs       Text editing with cursor, line wrapping and the DD-MM-YY date mask
+  hours_form.rs   Hours logging form
+  create_form.rs  Create and edit forms, with pickers
+  testutil.rs     Fake Odoo for the tests (tests only)
 ```
 
-## Límites conocidos
+To add or change an interface text, write it in English inside `tr("…")` (or `trf("…", &[…])` for `{name}` placeholders) and add its row with the four languages to `src/ui_strings.rs`. A test fails if a text is missing in any language, has different placeholders, or is no longer used.
 
-- No incluye leads ni contactos, ni editar o borrar líneas de horas, ni editar la descripción de las tareas.
-- Los estados de tarea se listan solo los del proyecto, si tu Odoo los relaciona (`project_ids`); si no, se listan todos. Odoo puede rechazar un estado que no corresponda, y el error se muestra en el formulario.
-- La hora de inicio usa el campo `date_time`. Si en tu Odoo la hora de las líneas de horas vive en otro campo (se puede ver con el modo desarrollador, pasando el mouse sobre el campo), el formulario no la va a pedir: hay que indicar el nombre técnico para sumarlo.
-- Se probó con terminales de 130×36. En terminales más chicas el diseño se recorta, pero no falla.
-- Probado en Linux y solo contra un Odoo simulado. No se probó en Windows ni en macOS, ni contra un Odoo 17 real.
+## Known limits
+
+- It does not include leads or contacts, nor editing or deleting timesheet lines, nor editing the description of tasks.
+- Task stages are listed only for the project, if your Odoo relates them (`project_ids`); otherwise all are listed. Odoo may reject a stage that does not apply, and the error is shown in the form.
+- The start time uses the `date_time` field. If in your Odoo the time of timesheet lines lives in another field (you can see it with developer mode, hovering over the field), the form will not ask for it: the technical name is needed to add it.
+- It was tried on 130×36 terminals. On smaller terminals the layout is cropped, but it does not fail.
+- Tested on Linux and only against a fake Odoo. Not tested on Windows or macOS, nor against a real Odoo 17.
